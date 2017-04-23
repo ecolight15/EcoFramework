@@ -1,0 +1,21 @@
+# Optional
+#userdatadb:                # userdata database section
+#    use: false             # Enable save database storage of user data.
+#    db: "sqlite"           # Select database type. sqlite or mysql
+#    name: "userdata.db"    # Input database name. sqlite:filename, mysql:dbname
+#    server: "localhost"    # Input database server connection settings.
+#    user: "user"           # server/user/pass is mysql only
+#    pass: "pass"
+    
+userdatadb:
+# Enable save database storage of user data.
+    use: false
+# Select database type. sqlite or mysql
+    db: "sqlite"
+# Input database name. sqlite:filename, mysql:dbname
+    name: "userdata.db"
+# Input database server connection settings.
+# server/user/pass is mysql only
+    server: "localhost"
+    user: "user"
+    pass: "pass"
