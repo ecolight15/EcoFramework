@@ -236,6 +236,45 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
     }
 
     /**
+     * パラメータチェック処理(定型メッセージを送信者に返却する)
+     * @param sender コマンド送信者インスタンス
+     * @param args パラメタ分割文字列
+     * @param min 許容する最小パラメタ数、負数の場合にはチェックしない
+     * @param max 許容する最大パラメタ数、負数の場合にはチェックしない
+     * @return コマンドパラメタ数異常かどうかのbool値を返す
+     */
+    protected final boolean checkRange(CommandSender sender, String[] args, int min, int max) {
+        if ((min >= 0) && (args.length < min)) {
+            sendPluginMessage(plg, sender, "指定したコマンドパラメーターが不足しています。");
+            return false;
+        } else if ((max >= 0) && (args.length > max)) {
+            sendPluginMessage(plg, sender, "指定したコマンドパラメーターが多すぎます。");
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 権限リスト表示
+     * @return 権限文字列リスト
+     */
+    public ArrayList<String> getPermissionList(ArrayList<String> list) {
+        // パラメタが空であればルートなので生成して下位に渡す
+        if (list == null) {
+            list = new ArrayList<>();
+        }
+        
+        // まず自分のコマンドの権限を挿入する
+        list.add(getPermissionString());
+
+        // サブコマンド登録がある場合、該当コマンドへ実行を引き継ぐ
+        for (CommandFrame c : cmds.values()) {
+            c.getPermissionList(list);
+        }
+        return list;
+    }
+    
+    /**
      * コンソールユーザー実行可否設定
      * デフォルト実行不可
      * @param perm 実行可否
@@ -258,7 +297,7 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
      * デフォルト実行可にしておく
      * @param perm 実行可否
      */
-    public final void setAuthPlayer(boolean perm) {
+    protected final void setAuthPlayer(boolean perm) {
         playerPermission = perm;
     }
     

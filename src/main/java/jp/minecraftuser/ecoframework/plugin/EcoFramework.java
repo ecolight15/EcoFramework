@@ -1,5 +1,6 @@
 package jp.minecraftuser.ecoframework.plugin;
 
+import jp.minecraftuser.ecoframework.CommandFrame;
 import jp.minecraftuser.ecoframework.ConfigFrame;
 import jp.minecraftuser.ecoframework.PluginFrame;
 import jp.minecraftuser.ecoframework.store.PlayerDataFileStoreListener;
@@ -52,6 +53,15 @@ public class EcoFramework extends PluginFrame {
             registerPluginListener(new PlayerDataFileStoreListener(this, "playerdata"));
         }
     }
-    
-    
+
+    /**
+     * コマンド初期化
+     */
+    @Override
+    public void initializeCommand() {
+        // EcoFramework本体コマンド
+        CommandFrame cmd = new EcoFrameworkCommand(this, "ecoframework");
+        cmd.addCommand(new EcoFrameworkPermissionsCommand(this, "permissions"));
+        registerPluginCommand(cmd);
+    }
 }

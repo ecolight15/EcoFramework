@@ -1,8 +1,6 @@
 
 package jp.minecraftuser.ecoframework;
 
-import com.google.common.io.ByteArrayDataInput;
-import com.google.common.io.ByteStreams;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,7 +12,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -210,6 +207,14 @@ public abstract class PluginFrame extends JavaPlugin {
     }
 
     /**
+     * 被参照プラグインリスト取得処理
+     * @return プラグインリスト
+     */
+    public ArrayList<PluginFrame> getRefPluginList() {
+        return new ArrayList<>(refMap.values());
+    }
+
+    /**
      * 被依存プラグインの連携再起動のためのサスペンド処理
      * @param plg Bukkit/Spigot プラグインインスタンス
      */
@@ -383,6 +388,19 @@ public abstract class PluginFrame extends JavaPlugin {
      */
     protected void registerPluginCommand(CommandFrame frame_) {
         cmdMap.put(frame_.getName(), frame_);
+    }
+
+    /**
+     * 権限リスト表示
+     * @return 権限文字列リスト
+     */
+    public ArrayList<String> getPermissionList() {
+        // コマンド登録がある場合、該当コマンドへ実行を引き継ぐ
+        ArrayList<String> list = new ArrayList<>();
+        for (CommandFrame c : cmdMap.values()) {
+            c.getPermissionList(list);
+        }
+        return list;
     }
 
     /**

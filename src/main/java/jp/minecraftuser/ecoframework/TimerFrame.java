@@ -1,7 +1,6 @@
 
 package jp.minecraftuser.ecoframework;
 
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import jp.minecraftuser.ecoframework.iface.Manageable;
 import jp.minecraftuser.ecoframework.iface.ReloadNotifiable;
