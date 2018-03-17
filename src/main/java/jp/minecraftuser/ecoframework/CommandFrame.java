@@ -236,7 +236,9 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
     }
 
     /**
-     * パラメータチェック処理(定型メッセージを送信者に返却する)
+     * パラメタチェック処理(定型メッセージを送信者に返却する)
+     * 定型処理として組み込むことも検討したが、コマンドによってはパラメタによって
+     * 追加でパラメタチェックする事もあると思うので任意に呼べるメソッドとして提供する。
      * @param sender コマンド送信者インスタンス
      * @param args パラメタ分割文字列
      * @param min 許容する最小パラメタ数、負数の場合にはチェックしない

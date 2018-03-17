@@ -31,6 +31,7 @@ public abstract class PluginFrame extends JavaPlugin {
     protected HashMap<String, PluginFrame> plgMap = null;
     protected HashMap<String, PluginFrame> refMap = null;
     protected HashMap<String, JavaPlugin> otherMap = null;
+    protected HashMap<String, LoggerFrame> loggerMap = null;
     protected ManagerFrame manager = null;
 
     /**
@@ -46,10 +47,14 @@ public abstract class PluginFrame extends JavaPlugin {
         plgMap = new HashMap<>();
         refMap = new HashMap<>();
         otherMap = new HashMap<>();
+        loggerMap = new HashMap<>();
 
         // 概ね読み込み順序不具合でない感じにinitialize呼んでいく
         // コンフィグ初期ロード
         initializeConfig();
+
+        // Logger登録
+        initializeLogger();
 
         // PlugManが存在する状況でのみsuspendしているプラグインを復旧する
         Plugin pl = Bukkit.getPluginManager().getPlugin("PlugMan");
@@ -88,6 +93,10 @@ public abstract class PluginFrame extends JavaPlugin {
         // タイマー登録
         initializeTimer();
         
+        // LoggerFrame起動
+        for (LoggerFrame f : loggerMap.values()) {
+            f.start();
+        }
         getLogger().info("plugin frame initialized.");
     }
 
@@ -132,6 +141,10 @@ public abstract class PluginFrame extends JavaPlugin {
         if (manager != null) {
             manager.close();
         }
+
+        // LoggerFrame停止
+        stopAllPluginLogger();
+
         log.info("plugin frame ended.");
     }
     
@@ -302,10 +315,19 @@ public abstract class PluginFrame extends JavaPlugin {
         }
     }
 
-    // リロード対象フレームをリロードする
-    // Configの個別リロードとプラグイン全体のリロードに対応できるよう
-    // プラグイン本体と各コンフィグに登録するReloadNotifiableクラスは整理して使用すること
+    /**
+     * リロード処理
+     * リロード対象フレームをリロードする
+     * Configの個別リロードとプラグイン全体のリロードに対応できるよう
+     * プラグイン本体と各コンフィグに登録するReloadNotifiableクラスは整理して使用すること
+     * 設定にPluginLoggerの有効無効の設定を含めるケースを考慮して、Loggerの停止と破棄、再初期化、起動を行う
+     * リロード中はPluginLoggerは使用不可。initializeLogger内でconf参照して起動の有無を決定してregisterすること。
+     */
     public void reload() {
+        /// Loggerの停止
+        stopAllPluginLogger();
+        // Loggerの破棄
+        dropAllPluginLogger();
         // 通知
         for (ReloadNotifiable frame : reloadList) {
             // ConfigFrameだけbase指定をしてコールする
@@ -314,6 +336,12 @@ public abstract class PluginFrame extends JavaPlugin {
             } else {
                 frame.reloadNotify();
             }
+        }
+        // Loggerの再登録
+        initializeLogger();
+        // Loggerの再起動
+        for (LoggerFrame l : loggerMap.values()) {
+            l.start();
         }
     }
 
@@ -332,6 +360,7 @@ public abstract class PluginFrame extends JavaPlugin {
         for (Manageable f : dbMap.values()) { f.registerManager(manager_); }
         for (Manageable f : listenerMap.values()) { f.registerManager(manager_); }
         for (Manageable f : timerMap.values()) { f.registerManager(manager_); }
+        for (Manageable f : loggerMap.values()) { f.registerManager(manager_); }
     }
 
     /**
@@ -474,6 +503,39 @@ public abstract class PluginFrame extends JavaPlugin {
     }
 
     /**
+     * Logger取得処理
+     * @param name Logger名
+     * @return Loggerフレームインスタンス
+     */
+    public LoggerFrame getPluginLogger(String name) {
+        return loggerMap.get(name);
+    }
+
+    /**
+     * Logger登録処理
+     * @param frame_ Loggerフレームインスタンス
+     */
+    protected void registerPluginLogger(LoggerFrame frame_) {
+        loggerMap.put(frame_.getName(), frame_);
+    }
+
+    /**
+     * Logger全停止
+     */
+    protected void stopAllPluginLogger() {
+        for (LoggerFrame f : loggerMap.values()) {
+            f.stop();
+        }
+    }
+
+    /**
+     * Logger登録解除
+     */
+    protected void dropAllPluginLogger() {
+        loggerMap.clear();
+    }
+
+    /**
      * 設定初期化
      * 使用するyamlファイルを全て登録する
      */
@@ -513,6 +575,14 @@ public abstract class PluginFrame extends JavaPlugin {
      * プラグイン終了時にcloseする
      */
     protected void initializeDB() {
+        // OptionalMethod
+    }
+
+    /**
+     * logger初期化
+     * 使用するリスナを全て登録する
+     */
+    protected void initializeLogger() {
         // OptionalMethod
     }
 

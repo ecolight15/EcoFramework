@@ -20,6 +20,7 @@ public abstract class ListenerFrame implements Listener, ReloadNotifiable, Manag
     /**
      * コンストラクタ
      * @param plg_ プラグインインスタンス
+     * @param name_ リスナー名
      */
     public ListenerFrame(PluginFrame plg_, String name_) {
         plg = plg_;
