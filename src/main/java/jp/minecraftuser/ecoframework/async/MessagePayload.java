@@ -1,7 +1,6 @@
 
 package jp.minecraftuser.ecoframework.async;
 
-import java.io.Serializable;
 import java.util.UUID;
 import jp.minecraftuser.ecoframework.PluginFrame;
 
