@@ -580,7 +580,7 @@ public abstract class PluginFrame extends JavaPlugin {
 
     /**
      * logger初期化
-     * 使用するリスナを全て登録する
+     * 使用するLoggerを全て登録する
      */
     protected void initializeLogger() {
         // OptionalMethod

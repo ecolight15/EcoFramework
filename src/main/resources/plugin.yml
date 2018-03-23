@@ -1,6 +1,6 @@
 name: EcoFramework
 main: jp.minecraftuser.ecoframework.plugin.EcoFramework
-version: 0.1
+version: ${project.version}
 commands:
   ecoframework:
     description: EcoFramework maintenance command.
