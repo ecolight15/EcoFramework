@@ -41,4 +41,11 @@
             </resource>
         </resources>
     </build>
+    <distributionManagement>
+        <repository>
+            <id>eco-rep</id>
+            <name>eco-rep</name>
+            <url>file://${project.build.directory}/deproy</url>
+        </repository>
+    </distributionManagement>
 </project>
