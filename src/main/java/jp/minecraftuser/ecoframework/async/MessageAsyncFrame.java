@@ -6,6 +6,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import jp.minecraftuser.ecoframework.PluginFrame;
 import org.bukkit.Server;
+import org.bukkit.command.BlockCommandSender;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
 
 /**
@@ -26,7 +29,7 @@ public abstract class MessageAsyncFrame extends AsyncFrame {
 
         // 呼び出し回数を削減するためサーバーインスタンスを確保しておく
         server = plg.getServer();
-        Player player;
+
         // message-sending-max設定値があれば使用する
         conf.registerLong("framework-message-sending-max", true);
         count = conf.getLong("framework-message-sending-max");
@@ -52,9 +55,23 @@ public abstract class MessageAsyncFrame extends AsyncFrame {
         long cnt = count;
         while (!queue.isEmpty()) {
             MessagePayload msg = queue.poll();
-            Player p = server.getPlayer(msg.getUUID());
-            if ((p != null) && (p.isOnline())) {
-                p.sendMessage(msg.getMessage());
+            CommandSender target = msg.getTarget();
+            // 送信先がプレイヤーの場合
+            if (target instanceof Player) {
+                if (((Player) target).isOnline()) {
+                    target.sendMessage(msg.getMessage());
+                } else {
+                    // (仮)処理中に送信先プレイヤーがいなくなっている場合には何もしない
+                    // 送信保留し次回ログイン時に送信する等は検討してもいいかも
+                }
+            }
+            // 送信先がコンソールの場合
+            else if (target instanceof ConsoleCommandSender) {
+                target.sendMessage(msg.getMessage());
+            }
+            // 送信先がブロックの場合
+            else if (target instanceof BlockCommandSender) {
+                target.sendMessage(msg.getMessage());
             }
             cnt--;
             if (cnt <= 0) {

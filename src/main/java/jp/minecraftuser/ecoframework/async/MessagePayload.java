@@ -1,45 +1,52 @@
 
 package jp.minecraftuser.ecoframework.async;
 
-import java.util.UUID;
 import jp.minecraftuser.ecoframework.PluginFrame;
+import org.bukkit.command.CommandSender;
 
 /**
  * メインスレッドと非同期スレッド間のデータ送受用クラス(メッセージ送受用)
  * @author ecolight
  */
 public class MessagePayload extends PayloadFrame {
-    private UUID uuid;
-    private UUID[] uuids;
+    private CommandSender sender;
+    private CommandSender target;
     private String msg;
 
     /**
      * コンストラクタ
      * @param plg_ プラグインインスタンス(ただし通信に用いられる可能性を念頭に一定以上の情報は保持しない)
+     * @param sender_ 送信者
+     * @param target_ 送信先
+     * @param msg_ 送信メッセージ
      */
-    public MessagePayload(PluginFrame plg_, UUID uuid_, UUID[] uuids_, String msg_) {
+    public MessagePayload(PluginFrame plg_, CommandSender sender_, CommandSender target_, String msg_) {
         super(plg_);
-        uuid = uuid_;
-        uuids = uuids_;
+        sender = sender_;
+        target = target_;
         msg = msg_;
     }
     
     /**
-     * UUID返却
-     * @return UUID
+     * sender取得
+     * @return CommandSender 送信者
      */
-    public UUID getUUID() {
-        return uuid;
+    public CommandSender getSender() {
+        return sender;
     }
     
     /**
-     * UUID配列返却
-     * @return UUID配列
+     * target取得
+     * @return CommandSender 送信先
      */
-    public UUID[] getUUIDs() {
-        return uuids;
+    public CommandSender getTarget() {
+        return target;
     }
     
+    /**
+     * 送信メッセージ取得
+     * @return String 送信メッセージ
+     */
     public String getMessage() {
         return msg;
     }
