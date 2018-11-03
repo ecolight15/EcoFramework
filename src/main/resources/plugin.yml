@@ -5,4 +5,8 @@ commands:
   ecoframework:
     description: EcoFramework maintenance command.
     usage: /<command> xxx
-    
+    permission: ecoframework
+  ecoframework permissions:
+    description: Show All EcoFramework plugin permissions.
+    usage: /<command> xxx
+    permission: ecoframework.permissions
