@@ -3,17 +3,15 @@ package jp.minecraftuser.ecoframework.store;
 
 import java.io.File;
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.SQLException;
-import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jp.minecraftuser.ecoframework.ListenerFrame;
 import jp.minecraftuser.ecoframework.PluginFrame;
-import static jp.minecraftuser.ecoframework.Utl.sendPluginMessage;
 import jp.minecraftuser.ecoframework.exception.DatabaseControlException;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -31,6 +29,7 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
     private String dbuser;
     private String dbpass;
     private HashMap<UUID, PlayerDataFileStoreAsyncThread> workTable = new HashMap<>();
+    private PlayerFileStore store = null;
     /**
      * コンストラクタ
      * @param plg_ プラグインフレームインスタンス
@@ -49,11 +48,39 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
     @Override
     public void reloadNotify() {
         // コンフィグが情報更新しているので読み直す
-        db = conf.getString("userdatadb.db");
-        dbname = conf.getString("userdatadb.name");
-        dbserver = conf.getString("userdatadb.server");
-        dbuser = conf.getString("userdatadb.user");
-        dbpass = conf.getString("userdatadb.pass");
+        String db_;
+        String dbname_;
+        String dbserver_;
+        String dbuser_;
+        String dbpass_;
+        PlayerFileStore store_ = null;
+        db_ = conf.getString("userdatadb.db");
+        dbname_ = conf.getString("userdatadb.name");
+        dbserver_ = conf.getString("userdatadb.server");
+        dbuser_ = conf.getString("userdatadb.user");
+        dbpass_ = conf.getString("userdatadb.pass");
+        try {
+            if (db_.equalsIgnoreCase("sqlite")) {
+                store_ = new PlayerFileStore(plg, dbname_, "playerdata");
+            } else if (db_.equalsIgnoreCase("mysql")) {
+                store_ = new PlayerFileStore(plg, dbserver_, dbuser_, dbpass_, dbname_, "playerdata");
+            } else {
+                throw new DatabaseControlException("データベース指定が異常です");
+            }
+            // 正常にDBコネクションできたので値を更新する
+            db = db_;
+            dbname = dbname_;
+            dbserver = dbserver_;
+            dbuser = dbuser_;
+            dbpass = dbpass_;
+            store = store_;
+        } catch (ClassNotFoundException ex) {
+                Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (SQLException ex) {
+                Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (DatabaseControlException ex) {
+            Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     /**
@@ -69,6 +96,9 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      */
     @EventHandler
     public void PlayerQuitEvent(PlayerQuitEvent event) {
+        // DB接続できていない状況でまだ動作中なら何もしないで終わる
+        if (store == null) return;
+        
         // プレイヤーログイン抑止は監視スレッドの存在チェックで行う
         // 非同期スレッドを起こしてプレイヤーデータ監視とDBへの書き込みを依頼する
         UUID uid = event.getPlayer().getUniqueId();
@@ -90,9 +120,9 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
         PlayerDataFileStorePayload data = new PlayerDataFileStorePayload(plg, uid);
 
         // DB書き込み前にプレイヤーデータセーブ
-        //event.getPlayer().saveData();
+        event.getPlayer().saveData();
         // 個人のセーブだと統計の保存が動作しないため全プレイヤーセーブを呼び出すspigotめ…
-        Bukkit.savePlayers();
+        //Bukkit.savePlayers();
 
         // データの作成と依頼
         t.sendData(data);
@@ -105,6 +135,9 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void RejectPlayer(PlayerLoginEvent event) {
+        // DB接続できていない状況でまだ動作中なら何もしないで終わる
+        if (store == null) return;
+
         // 他のプライオリティの処理でログインが抑止されている場合何もしない
         if (!event.getResult().equals(PlayerLoginEvent.Result.ALLOWED)) {
             return;
@@ -133,6 +166,9 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void PlayerLoginEvent(PlayerLoginEvent event) {
+        // DB接続できていない状況でまだ動作中なら何もしないで終わる
+        if (store == null) return;
+
         // 他のプライオリティの処理でログインが抑止されている場合何もしない
         if (!event.getResult().equals(PlayerLoginEvent.Result.ALLOWED)) {
             return;
@@ -160,54 +196,65 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
     private enum OPE {
         LOAD, START, ISLOGOUT
     }
+
     /**
      * プレイヤーデータロード
      * @param p プレイヤーインスタンス
      */
     private boolean loadPlayerData(Player p, OPE ope) {
-        PlayerFileStore store = null;
         boolean result = true;
-        File datafile = new File(plg.getServer().getWorlds().get(0).getName() + "/playerdata/" + p.getUniqueId().toString() + ".dat");
+        String w = plg.getServer().getWorlds().get(0).getName();
+        String uid = p.getUniqueId().toString();
+        PlayerFileSet files = new PlayerFileSet(
+            new File(w + "/playerdata/" + uid + ".dat"),
+            new File(w + "/stats/" + uid + ".json"),
+            new File(w + "/advancements/" + uid + ".json"));
+        Connection con = null;
         try {
-            if (db.equalsIgnoreCase("sqlite")) {
-                store = new PlayerFileStore(plg, dbname, "playerdata");
-            } else if (db.equalsIgnoreCase("mysql")) {
-                store = new PlayerFileStore(plg, dbserver, dbuser, dbpass, dbname, "playerdata");
-            } else {
-                throw new DatabaseControlException("データベース指定が異常です");
-            }
-            if (store.existPlayerData(p.getUniqueId())) {
+            con = store.connect();
+            if (store.existPlayerData(con, p.getUniqueId())) {
                 switch (ope) {
                     case LOAD:
-                        store.loadPlayerData(p.getUniqueId(), datafile);
+                        store.loadPlayerData(con, p.getUniqueId(), files);
                         break;
                     case START:
-                        store.logoutPlayer(p.getUniqueId());
+                        store.logoutPlayer(con, p.getUniqueId());
                         break;
                     case ISLOGOUT:
-                        result = store.isPlayerAfterLogout(p.getUniqueId());
+                        result = store.isPlayerAfterLogout(con, p.getUniqueId());
                         break;
                 }
             } else {
                 log.log(Level.INFO, "not stored PlayerData:{0}", p.getName());
             }
-            store.commit();
-        } catch (ClassNotFoundException | SQLException | IOException ex) {
-            if (store != null) {
+            con.commit();
+        } catch (SQLException | IOException ex) {
+            if (con != null) {
                 try {
-                    store.rollback();
+                    con.rollback();
                 } catch (SQLException ex1) {
                     Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex1);
                 }
             }
             Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (DatabaseControlException ex) {
-            Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
         }
-        if (store != null) {
-            store.close();
-        }        
+        if (con != null) {
+            try {
+                con.close();
+            } catch (SQLException ex) {
+                Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
         return result;
     }
 
+    /**
+     * DBクローズを明確に実施する用
+     * プラグインのonDisableから呼ぶこと
+     */
+    public void close() {
+        if (store != null) {
+            store.close();
+        }        
+    }
 }

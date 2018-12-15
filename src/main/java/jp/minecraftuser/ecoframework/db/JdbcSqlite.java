@@ -1,7 +1,9 @@
 
 package jp.minecraftuser.ecoframework.db;
 
+import com.zaxxer.hikari.HikariConfig;
 import java.io.File;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -33,8 +35,14 @@ public class JdbcSqlite extends JdbcBase {
     }
 
     @Override
+    protected void registerConfig(HikariConfig config) {
+        // エンコーディング設定
+        config.addDataSourceProperty("foreign_keys", "true");
+    }
+
+    @Override
     protected void registerProperty() {
-        setProperty("foreign_keys", "true"); // 外部制約キーの有効化
+        //setProperty("foreign_keys", "true"); // 外部制約キーの有効化
     }
 
     @Override
@@ -47,13 +55,20 @@ public class JdbcSqlite extends JdbcBase {
     public boolean constans(String table_) throws SQLException {
         PreparedStatement prep = null;
         ResultSet rs = null;
+        Connection con = connect();
         boolean result = false;
-        prep = con.prepareStatement("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? ;");
-        prep.setString(1, table_);
-        rs = prep.executeQuery();
-        result = rs.next();
-        rs.close();
-        prep.close();
+        try {
+            prep = con.prepareStatement("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? ;");
+            prep.setString(1, table_);
+            rs = prep.executeQuery();
+            result = rs.next();
+            rs.close();
+            prep.close();
+            con.close();
+        } catch (Exception e) {
+            con.close();
+            throw e;
+        }
         return result;
     }
     
@@ -61,27 +76,34 @@ public class JdbcSqlite extends JdbcBase {
     public boolean constans(String table_, String column_) throws SQLException {
         PreparedStatement prep;
         ResultSet rs;
+        Connection con = connect();
         boolean result;
-        prep = con.prepareStatement("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ? ;");
-        prep.setString(1, table_);
-        rs = prep.executeQuery();
-        result = rs.next();
-        // 結果無しならfalse復帰
-        if (result) {
-            result = false;
-            String sql = rs.getString("sql");
-            String work = sql.substring(sql.indexOf("(")+1,sql.length());
-            // ()内のcolumnの一覧から
-            for (String s : work.replaceAll(")", "").split(",")) {
-                // 先頭に空白が入る場合があるので、取りつつ一つ目の" "より前の文字列を検査する
-                if (s.trim().substring(0, s.indexOf(" ")).equalsIgnoreCase(column_)) {
-                    result = true;
-                    break;
+        try {
+            prep = connect().prepareStatement("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ? ;");
+            prep.setString(1, table_);
+            rs = prep.executeQuery();
+            result = rs.next();
+            // 結果無しならfalse復帰
+            if (result) {
+                result = false;
+                String sql = rs.getString("sql");
+                String work = sql.substring(sql.indexOf("(")+1,sql.length());
+                // ()内のcolumnの一覧から
+                for (String s : work.replaceAll(")", "").split(",")) {
+                    // 先頭に空白が入る場合があるので、取りつつ一つ目の" "より前の文字列を検査する
+                    if (s.trim().substring(0, s.indexOf(" ")).equalsIgnoreCase(column_)) {
+                        result = true;
+                        break;
+                    }
                 }
             }
+            rs.close();
+            prep.close();
+            con.close();
+        } catch (Exception e) {
+            con.close();
+            throw e;
         }
-        rs.close();
-        prep.close();
         return result;
     }
 }

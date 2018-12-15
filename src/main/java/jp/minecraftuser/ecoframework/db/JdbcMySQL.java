@@ -1,6 +1,8 @@
 
 package jp.minecraftuser.ecoframework.db;
 
+import com.zaxxer.hikari.HikariConfig;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -11,14 +13,8 @@ import jp.minecraftuser.ecoframework.PluginFrame;
  * @author ecolight
  */
 public class JdbcMySQL extends JdbcBase {
-    private final String addr;
-    private final String user;
-    private final String pass;
     public JdbcMySQL(PluginFrame plg_, String dbname_, String addr_, String user_, String pass_) throws ClassNotFoundException, SQLException {
-        super(plg_, dbname_);
-        addr = addr_;
-        user = user_;
-        pass = pass_;
+        super(plg_, addr_, user_, pass_, dbname_);
     }
 
     @Override
@@ -28,37 +24,44 @@ public class JdbcMySQL extends JdbcBase {
 
     @Override
     protected String connectDB() {
-        // conを受け取らない場合、指定された名前のdbを接続する。
-        return "jdbc:mysql://"+addr+"/?useUnicode=true&characterEncoding=utf8&user="+user+"&password="+pass;
+        // 指定された名前のdbを接続する。
+        return "jdbc:mysql://"+addr+"/"+dbname;
     }
 
     @Override
-    protected void afterConnection() throws SQLException {
-        try {
-            // まずDB接続を試みる
-            executeStatement("use " + dbname);
-        } catch (SQLException ex) {
-            // 失敗したらDBが無いものとして新規作成する
-            executeStatement("create database " + dbname + " character set utf8");
-            con.commit();
-            executeStatement("use " + dbname);
-            // ここでこけたらDB無いし何も権限無い可能性がある。
-            throw ex;
-        }
-        
+    protected void registerConfig(HikariConfig config) {
+        // エンコーディング設定
+        config.addDataSourceProperty("characterEncoding", "utf8");
+        config.addDataSourceProperty("useUnicode", "true");
+        // ユーザーパス設定
+        config.addDataSourceProperty("user", user);
+        config.addDataSourceProperty("password", pass);
+        // とりあえずキャッシュ系設定やサーバーサイドプリペアドステートメント設定は省略
+        // 必要あれば継承してオーバーライドすること
+        // config.addDataSourceProperty("cachePrepStmts", "true");
+        // config.addDataSourceProperty("prepStmtCacheSize", "250");
+        // config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        // config.addDataSourceProperty("useServerPrepStmts", "true");
     }
 
     @Override
     public boolean constans(String table_) throws SQLException {
         PreparedStatement prep = null;
         ResultSet rs = null;
+        Connection con = connect();
         boolean result = false;
-        prep = con.prepareStatement("SELECT * FROM information_schema.columns WHERE table_name = ?");
-        prep.setString(1, table_);
-        rs = prep.executeQuery();
-        result = rs.next();
-        rs.close();
-        prep.close();
+        try {
+            prep = con.prepareStatement("SELECT * FROM information_schema.columns WHERE table_name = ?");
+            prep.setString(1, table_);
+            rs = prep.executeQuery();
+            result = rs.next();
+            rs.close();
+            prep.close();
+            con.close();
+        } catch (Exception e) {
+            con.close();
+            throw e;
+        }
         return result;
     }
     
@@ -66,14 +69,21 @@ public class JdbcMySQL extends JdbcBase {
     public boolean constans(String table_, String column_) throws SQLException {
         PreparedStatement prep;
         ResultSet rs;
+        Connection con = connect();
         boolean result;
-        prep = con.prepareStatement("SELECT * FROM information_schema.columns WHERE table_name = ? AND column_name = ?");
-        prep.setString(1, table_);
-        prep.setString(2, column_);
-        rs = prep.executeQuery();
-        result = rs.next();
-        rs.close();
-        prep.close();
+        try {
+            prep = con.prepareStatement("SELECT * FROM information_schema.columns WHERE table_name = ? AND column_name = ?");
+            prep.setString(1, table_);
+            prep.setString(2, column_);
+            rs = prep.executeQuery();
+            result = rs.next();
+            rs.close();
+            prep.close();
+            con.close();
+        } catch (Exception e) {
+            con.close();
+            throw e;
+        }
         return result;
     }
 }

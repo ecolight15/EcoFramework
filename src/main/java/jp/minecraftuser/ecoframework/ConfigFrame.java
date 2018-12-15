@@ -194,7 +194,7 @@ public abstract class ConfigFrame implements Manageable, ReloadNotifiable {
         else {
             set = conf.getConfigurationSection(key).getKeys(false);
         }
-        if (key == null) {
+        if (set == null) {
             if ((param.length == 0) || (!param[0])) {
                 log.warning("指定された設定が取得できませんでした["+key+"]");
             }
