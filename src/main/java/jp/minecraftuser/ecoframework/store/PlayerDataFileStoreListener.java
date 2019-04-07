@@ -11,10 +11,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import jp.minecraftuser.ecoframework.ListenerFrame;
 import jp.minecraftuser.ecoframework.PluginFrame;
-import jp.minecraftuser.ecoframework.exception.DatabaseControlException;
-import org.bukkit.entity.Player;
+import jp.minecraftuser.ecoframework.plugin.EcoFrameworkConfig;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
@@ -23,13 +23,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
  * @author ecolight
  */
 public class PlayerDataFileStoreListener extends ListenerFrame {
-    private String db;
-    private String dbname;
-    private String dbserver;
-    private String dbuser;
-    private String dbpass;
     private HashMap<UUID, PlayerDataFileStoreAsyncThread> workTable = new HashMap<>();
-    private PlayerFileStore store = null;
+    private EcoFrameworkConfig efconf;
     /**
      * コンストラクタ
      * @param plg_ プラグインフレームインスタンス
@@ -37,50 +32,7 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      */
     public PlayerDataFileStoreListener(PluginFrame plg_, String name_) {
         super(plg_, name_);
-        // リロード対応
-        conf.registerNotifiable(this);
-        reloadNotify();
-    }
-
-    /**
-     * リロード通知受信
-     */
-    @Override
-    public void reloadNotify() {
-        // コンフィグが情報更新しているので読み直す
-        String db_;
-        String dbname_;
-        String dbserver_;
-        String dbuser_;
-        String dbpass_;
-        PlayerFileStore store_ = null;
-        db_ = conf.getString("userdatadb.db");
-        dbname_ = conf.getString("userdatadb.name");
-        dbserver_ = conf.getString("userdatadb.server");
-        dbuser_ = conf.getString("userdatadb.user");
-        dbpass_ = conf.getString("userdatadb.pass");
-        try {
-            if (db_.equalsIgnoreCase("sqlite")) {
-                store_ = new PlayerFileStore(plg, dbname_, "playerdata");
-            } else if (db_.equalsIgnoreCase("mysql")) {
-                store_ = new PlayerFileStore(plg, dbserver_, dbuser_, dbpass_, dbname_, "playerdata");
-            } else {
-                throw new DatabaseControlException("データベース指定が異常です");
-            }
-            // 正常にDBコネクションできたので値を更新する
-            db = db_;
-            dbname = dbname_;
-            dbserver = dbserver_;
-            dbuser = dbuser_;
-            dbpass = dbpass_;
-            store = store_;
-        } catch (ClassNotFoundException ex) {
-                Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (SQLException ex) {
-                Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (DatabaseControlException ex) {
-            Logger.getLogger(PlayerDataFileStoreListener.class.getName()).log(Level.SEVERE, null, ex);
-        }
+        efconf = (EcoFrameworkConfig) conf;
     }
 
     /**
@@ -96,8 +48,11 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      */
     @EventHandler
     public void PlayerQuitEvent(PlayerQuitEvent event) {
+        log.info("Start player quit : " + event.getPlayer().getDisplayName() + " : " + event.getPlayer().getPlayer().getUniqueId().toString());
+        // プレイヤーデータ保存未使用なら何もせず終わる
+        if (!efconf.dbuse) return;
         // DB接続できていない状況でまだ動作中なら何もしないで終わる
-        if (store == null) return;
+        if (efconf.store == null) return;
         
         // プレイヤーログイン抑止は監視スレッドの存在チェックで行う
         // 非同期スレッドを起こしてプレイヤーデータ監視とDBへの書き込みを依頼する
@@ -114,7 +69,7 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
         workTable.put(uid, t);
 
         // ログアウト開始をDB反映しておく
-        loadPlayerData(event.getPlayer(), OPE.START);
+        loadPlayerData(event.getPlayer().getUniqueId(), OPE.START);
         
         // ファイルの保存時間を見るため、送信データは先に生成して時刻を保持させる
         PlayerDataFileStorePayload data = new PlayerDataFileStorePayload(plg, uid);
@@ -126,6 +81,7 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
 
         // データの作成と依頼
         t.sendData(data);
+        log.info("End player quit : " + event.getPlayer().getDisplayName() + " : " + event.getPlayer().getPlayer().getUniqueId().toString());
     }
 
     /**
@@ -134,9 +90,70 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      * @param event イベント
      */
     @EventHandler(priority = EventPriority.LOWEST)
-    public void RejectPlayer(PlayerLoginEvent event) {
+    public void PreLoginRejectPlayer(AsyncPlayerPreLoginEvent event) {
+        log.info("Check player reject : " + event.getName() + " : " + event.getName());
+        // プレイヤーデータ保存未使用なら何もせず終わる
+        if (!efconf.dbuse) return;
         // DB接続できていない状況でまだ動作中なら何もしないで終わる
-        if (store == null) return;
+        if (efconf.store == null) return;
+
+        // 他のプライオリティの処理でログインが抑止されている場合何もしない
+        if (!event.getLoginResult().equals(AsyncPlayerPreLoginEvent.Result.ALLOWED)) {
+            return;
+        }
+        
+        // プレイヤーデータの退避処理中の場合はログインをガードする
+        // サーバー単体の場合はこれでガードできるが、複数サーバーからの排他を行う場合にはDBで排他させる必要がある
+        UUID uid = event.getUniqueId();
+        if (workTable.containsKey(uid)) {
+            // 存在する場合はNG
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "サーバーからのログアウト処理中です\nこの状態が1分以上継続する場合には管理者に相談してください");
+            return;
+        }
+
+        // DBによるガード
+        if (!loadPlayerData(event.getUniqueId(), OPE.ISLOGOUT)) {
+            // false : ログアウトしていない = 処理中ならガードする
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "連携サーバーからのログアウト処理中です\nこの状態が1分以上継続する場合には管理者に相談してください");
+            return;
+        }
+    }
+
+    /**
+     * プレイヤーログイン処理
+     * @param event イベント
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void PlayerPreLoginEvent(AsyncPlayerPreLoginEvent event) {
+        log.info("Load player data : " + event.getName() + " : " + event.getName());
+        // プレイヤーデータ保存未使用なら何もせず終わる
+        if (!efconf.dbuse) return;
+        // DB接続できていない状況でまだ動作中なら何もしないで終わる
+        if (efconf.store == null) return;
+
+        // 他のプライオリティの処理でログインが抑止されている場合何もしない
+        if (!event.getLoginResult().equals(AsyncPlayerPreLoginEvent.Result.ALLOWED)) {
+            return;
+        }
+        
+        // ログイン許可されている場合はDBからプレイヤーデータのロードを行う
+        // 取り出しは同期処理でデータベースからの取り出し
+        log.info("start PlayerData load.");
+        loadPlayerData(event.getUniqueId(), OPE.LOAD);
+        log.info("Load player data complete : " + event.getName() + " : " + event.getName());
+    }
+          
+    /**
+     * プレイヤーログイン抑止処理
+     * プレイヤーのログイン拒否を含むため、まず優先度LOWSTで抑止処理をしておく
+     * @param event イベント
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void RejectPlayer(PlayerLoginEvent event) {
+        // プレイヤーデータ保存未使用なら何もせず終わる
+        if (!efconf.dbuse) return;
+        // DB接続できていない状況でまだ動作中なら何もしないで終わる
+        if (efconf.store == null) return;
 
         // 他のプライオリティの処理でログインが抑止されている場合何もしない
         if (!event.getResult().equals(PlayerLoginEvent.Result.ALLOWED)) {
@@ -153,7 +170,7 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
         }
 
         // DBによるガード
-        if (!loadPlayerData(event.getPlayer(), OPE.ISLOGOUT)) {
+        if (!loadPlayerData(event.getPlayer().getUniqueId(), OPE.ISLOGOUT)) {
             // false : ログアウトしていない = 処理中ならガードする
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "連携サーバーからのログアウト処理中です\nこの状態が1分以上継続する場合には管理者に相談してください");
             return;
@@ -166,8 +183,10 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void PlayerLoginEvent(PlayerLoginEvent event) {
+        // プレイヤーデータ保存未使用なら何もせず終わる
+        if (!efconf.dbuse) return;
         // DB接続できていない状況でまだ動作中なら何もしないで終わる
-        if (store == null) return;
+        if (efconf.store == null) return;
 
         // 他のプライオリティの処理でログインが抑止されている場合何もしない
         if (!event.getResult().equals(PlayerLoginEvent.Result.ALLOWED)) {
@@ -179,9 +198,9 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
         log.info("start PlayerData load.");
         
         // データベースからの取り出し
-        loadPlayerData(event.getPlayer(), OPE.LOAD);
+        loadPlayerData(event.getPlayer().getUniqueId(), OPE.LOAD);
     }
-            
+
     /**
      * 保存完了処理
      * @param uid プレイヤーUUID
@@ -201,31 +220,32 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
      * プレイヤーデータロード
      * @param p プレイヤーインスタンス
      */
-    private boolean loadPlayerData(Player p, OPE ope) {
+    private boolean loadPlayerData(UUID uuid, OPE ope) {
         boolean result = true;
         String w = plg.getServer().getWorlds().get(0).getName();
-        String uid = p.getUniqueId().toString();
+        String uid = uuid.toString();
         PlayerFileSet files = new PlayerFileSet(
             new File(w + "/playerdata/" + uid + ".dat"),
             new File(w + "/stats/" + uid + ".json"),
             new File(w + "/advancements/" + uid + ".json"));
+        PlayerFileStore store = efconf.store;
         Connection con = null;
         try {
             con = store.connect();
-            if (store.existPlayerData(con, p.getUniqueId())) {
+            if (store.existPlayerData(con, uuid)) {
                 switch (ope) {
                     case LOAD:
-                        store.loadPlayerData(con, p.getUniqueId(), files);
+                        store.loadPlayerData(con, uuid, files);
                         break;
                     case START:
-                        store.logoutPlayer(con, p.getUniqueId());
+                        store.logoutPlayer(con, uuid);
                         break;
                     case ISLOGOUT:
-                        result = store.isPlayerAfterLogout(con, p.getUniqueId());
+                        result = store.isPlayerAfterLogout(con, uuid);
                         break;
                 }
             } else {
-                log.log(Level.INFO, "not stored PlayerData:{0}", p.getName());
+                log.log(Level.INFO, "not stored PlayerData:{0}", uuid);
             }
             con.commit();
         } catch (SQLException | IOException ex) {
@@ -246,15 +266,5 @@ public class PlayerDataFileStoreListener extends ListenerFrame {
             }
         }
         return result;
-    }
-
-    /**
-     * DBクローズを明確に実施する用
-     * プラグインのonDisableから呼ぶこと
-     */
-    public void close() {
-        if (store != null) {
-            store.close();
-        }        
     }
 }

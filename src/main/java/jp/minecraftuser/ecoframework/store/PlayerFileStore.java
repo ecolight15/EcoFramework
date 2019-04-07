@@ -137,6 +137,7 @@ public class PlayerFileStore extends DatabaseFrame {
             prep1.setLong(1, uuid.getMostSignificantBits());
             prep1.setLong(2, uuid.getLeastSignificantBits());
             prep1.setBoolean(3, true);
+
             prep2.setLong(1, uuid.getMostSignificantBits());
             prep2.setLong(2, uuid.getLeastSignificantBits());
             prep2.setString(3, files.profile.getName());
@@ -146,6 +147,7 @@ public class PlayerFileStore extends DatabaseFrame {
             fis.read(buf, 0, (int) files.profile.length());
             fis.close();
             prep2.setBytes(5, buf);
+
             prep3.setLong(1, uuid.getMostSignificantBits());
             prep3.setLong(2, uuid.getLeastSignificantBits());
             prep3.setString(3, files.stats.getName());
@@ -155,6 +157,7 @@ public class PlayerFileStore extends DatabaseFrame {
             fis.read(buf, 0, (int) files.stats.length());
             fis.close();
             prep3.setBytes(5, buf);
+
             prep4.setLong(1, uuid.getMostSignificantBits());
             prep4.setLong(2, uuid.getLeastSignificantBits());
             prep4.setString(3, files.adv.getName());
@@ -165,7 +168,6 @@ public class PlayerFileStore extends DatabaseFrame {
             fis.close();
             prep4.setBytes(5, buf);
 
-            
             // 実行
             prep1.executeUpdate();
             prep2.executeUpdate();
@@ -250,7 +252,7 @@ public class PlayerFileStore extends DatabaseFrame {
                 fos.close();
             }
             rs.close();
-            rs = prep2.executeQuery();
+            rs = prep3.executeQuery();
             files.adv.delete();
             files.adv.createNewFile();
             fos = new FileOutputStream(files.adv);

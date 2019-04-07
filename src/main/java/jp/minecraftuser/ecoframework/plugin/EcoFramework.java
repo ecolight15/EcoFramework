@@ -2,7 +2,6 @@ package jp.minecraftuser.ecoframework.plugin;
 
 import jp.minecraftuser.ecoframework.CommandFrame;
 import jp.minecraftuser.ecoframework.ConfigFrame;
-import jp.minecraftuser.ecoframework.ListenerFrame;
 import jp.minecraftuser.ecoframework.PluginFrame;
 import jp.minecraftuser.ecoframework.store.PlayerDataFileStoreListener;
 
@@ -24,9 +23,11 @@ public class EcoFramework extends PluginFrame {
     public void onDisable()
     {
         // DB動作していたら止める
-        ListenerFrame f = getPluginListerner("playerdata");
-        if (f != null) {
-            ((PlayerDataFileStoreListener) f).close();
+        EcoFrameworkConfig efconf = (EcoFrameworkConfig) getDefaultConfig();
+        if (efconf.dbuse) {
+            if (efconf.store != null) {
+                efconf.store.close();
+            }
         }
         disable();
     }
