@@ -119,6 +119,11 @@ public class LoggerFrame implements Manageable{
     public void stop() {
         isActive = false;
         thread.interrupt();
+        try {
+            thread.join(3000L);
+        } catch (InterruptedException ex) {
+            Logger.getLogger(LoggerFrame.class.getName()).log(Level.WARNING, null, ex);
+        }
     }    
 
     /**

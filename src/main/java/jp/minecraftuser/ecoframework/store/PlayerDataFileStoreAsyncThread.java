@@ -48,6 +48,10 @@ public class PlayerDataFileStoreAsyncThread extends AsyncProcessFrame {
         efconf = (EcoFrameworkConfig) plg.getDefaultConfig();
     }
 
+    /**
+     * Data加工子スレッド側処理
+     * @param data_ ペイロードインスタンス
+     */
     @Override
     protected void executeProcess(PayloadFrame data_) {
         PlayerDataFileStorePayload data = (PlayerDataFileStorePayload) data_;
@@ -128,12 +132,22 @@ public class PlayerDataFileStoreAsyncThread extends AsyncProcessFrame {
         receiveData(data);
     }
 
+    /**
+     * Data加工後親スレッド側処理
+     * @param data_ ペイロードインスタンス
+     */
     @Override
     protected void executeReceive(PayloadFrame data_) {
         // 処理結果を受け取ったので完了する
         listener.complete(((PlayerDataFileStorePayload)data_).uuid);
     }
 
+    /**
+     * 継承クラスの子スレッド用インスタンス生成
+     * 親子間で共有リソースがある場合、マルチスレッドセーフな作りにすること
+     * synchronizedにする、スレッドセーフ対応クラスを使用するなど
+     * @return AsyncFrame継承クラスのインスタンス
+     */
     @Override
     protected AsyncFrame clone() {
         return new PlayerDataFileStoreAsyncThread(plg, listener, name, this);
