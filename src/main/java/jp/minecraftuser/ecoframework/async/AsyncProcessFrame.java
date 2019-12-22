@@ -114,6 +114,7 @@ public abstract class AsyncProcessFrame extends AsyncFrame {
                 Logger.getLogger(AsyncProcessFrame.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
+        finalizeProcess();
     }
 
     /**
@@ -147,6 +148,11 @@ public abstract class AsyncProcessFrame extends AsyncFrame {
      * @param data_ ペイロードインスタンス
      */
     protected abstract void executeProcess(PayloadFrame data_);
+
+    /**
+     * 子スレッド終了時処理
+     */
+    protected void finalizeProcess(){};
 
     /**
      * Data加工後親スレッド側処理
