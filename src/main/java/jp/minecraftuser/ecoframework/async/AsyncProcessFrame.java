@@ -108,10 +108,12 @@ public abstract class AsyncProcessFrame extends AsyncFrame {
                     executeProcess(data);
             }
             // スレッドのSleep(ミリ秒)
-            try {
-                Thread.sleep(sleep);
-            } catch (InterruptedException ex) {
-                Logger.getLogger(AsyncProcessFrame.class.getName()).log(Level.SEVERE, null, ex);
+            if (sleep != 0) {
+                try {
+                    Thread.sleep(sleep);
+                } catch (InterruptedException ex) {
+                    Logger.getLogger(AsyncProcessFrame.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
         }
         finalizeProcess();
