@@ -111,6 +111,7 @@ public class LoggerFrame implements Manageable{
             }
             Logger.getLogger(LoggerFrame.class.getName()).log(Level.INFO, String.format("Stop %s logging thread", name));
         });
+        thread.start();
     }
 
     /**
@@ -121,6 +122,7 @@ public class LoggerFrame implements Manageable{
         thread.interrupt();
         try {
             thread.join(3000L);
+            Logger.getLogger(LoggerFrame.class.getName()).log(Level.INFO, String.format("Detect stop %s logging thread", name));
         } catch (InterruptedException ex) {
             Logger.getLogger(LoggerFrame.class.getName()).log(Level.WARNING, null, ex);
         }
