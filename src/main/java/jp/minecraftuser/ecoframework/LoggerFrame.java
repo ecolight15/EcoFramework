@@ -25,7 +25,15 @@ public class LoggerFrame implements Manageable{
     protected final PluginFrame plg;
     protected final ConfigFrame conf;
     protected Logger log;
-    private LinkedBlockingQueue<String> logque;
+    private class LogPackage {
+        String log;
+        Date date;
+        public LogPackage(String log_) {
+            log = log_;
+            date = new Date();
+        }
+    }
+    final private LinkedBlockingQueue<LogPackage> logque;
     private Thread thread;
     private boolean isActive = true;
     
@@ -94,10 +102,10 @@ public class LoggerFrame implements Manageable{
             Logger.getLogger(LoggerFrame.class.getName()).log(Level.INFO, String.format("Start %s logging thread", name));
             while (isActive) {
                 try {
-                    String work = logque.take();
+                    LogPackage work = logque.take();
                     // try-with-resources による自動flush&close
                     try (BufferedWriter bw = new BufferedWriter(new FileWriter(file, true))) {
-                        String token_message = sd.format(new Date()) + work;
+                        String token_message = sd.format(work.date) + work.log;
                         bw.write(token_message);
                         bw.newLine();
                     }
@@ -133,7 +141,7 @@ public class LoggerFrame implements Manageable{
      * @param str ログ文字列
      */
     public void log(String str) {
-        logque.add(str);
+        logque.add(new LogPackage(str));
     }
     
     /**
@@ -141,7 +149,7 @@ public class LoggerFrame implements Manageable{
      * @param str ログ文字列のビルダー
      */
     public void log(StringBuilder str) {
-        logque.add(str.toString());
+        logque.add(new LogPackage(str.toString()));
     }
     
     /**
