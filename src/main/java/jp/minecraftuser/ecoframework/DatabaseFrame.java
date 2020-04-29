@@ -216,16 +216,27 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
     /**
      * ステートメント実行処理
      * SQLインジェクション防止のためpreparedステートメント使用せずにユーザー入力文字列をコミットしないこと
+     * @param con_ コネクション
+     * @param sql_ 実行SQL文
+     * @throws SQLException
+     */
+    public void executeStatement(Connection con_, String sql_) throws SQLException {
+        Statement stmt;
+        stmt = con_.createStatement();
+        stmt.executeUpdate(sql_);
+        stmt.close();
+    }
+
+    /**
+     * ステートメント実行処理
+     * SQLインジェクション防止のためpreparedステートメント使用せずにユーザー入力文字列をコミットしないこと
      * @param sql_ 実行SQL文
      * @throws SQLException
      */
     public void executeStatement(String sql_) throws SQLException {
-        Statement stmt;
         Connection con = connect();
         try {
-            stmt = con.createStatement();
-            stmt.executeUpdate(sql_);
-            stmt.close();
+            executeStatement(con, sql_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -239,14 +250,26 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
      * @return 実行結果
      * @throws SQLException
      */
-    public ResultSet executeQuery(String sql_) throws SQLException {
+    public ResultSet executeQuery(Connection con_, String sql_) throws SQLException {
         Statement stmt;
+        ResultSet rs = null;
+        stmt = con_.createStatement();
+        rs = stmt.executeQuery(sql_);
+        stmt.close();
+        return rs;
+    }
+
+    /**
+     * クエリ実行処理(復帰データ有)
+     * @param sql_ 実行SQL文
+     * @return 実行結果
+     * @throws SQLException
+     */
+    public ResultSet executeQuery(String sql_) throws SQLException {
         Connection con = connect();
         ResultSet rs = null;
         try {
-            stmt = con.createStatement();
-            rs = stmt.executeQuery(sql_);
-            stmt.close();
+            rs = executeQuery(con, sql_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -278,23 +301,29 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         return jdbc.constans(table_, column_);
     }
 
-    public long count(String table_, String column_) throws SQLException {
+    public long count(Connection con_, String table_, String column_) throws SQLException {
         PreparedStatement prep;
         ResultSet rs;
         boolean result;
         long count = 0;
+        prep = con_.prepareStatement("SELECT COUNT(?) FROM " + table_);
+        prep.setString(1, column_);
+        rs = prep.executeQuery();
+        result = rs.next();
+        // 結果無しなら0復帰
+        if (result) {
+            count = rs.getLong(1);
+        }
+        rs.close();
+        prep.close();
+        return count;
+    }
+
+    public long count(String table_, String column_) throws SQLException {
+        long count = 0;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("SELECT COUNT(?) FROM " + table_);
-            prep.setString(1, column_);
-            rs = prep.executeQuery();
-            result = rs.next();
-            // 結果無しなら0復帰
-            if (result) {
-                count = rs.getLong(1);
-            }
-            rs.close();
-            prep.close();
+            count = count(con, table_, column_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -303,12 +332,28 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         return count;
     }
 
+    public long count(Connection con_, String table_) throws SQLException {
+        return count(con_, table_, "*");
+    }
+
     public long count(String table_) throws SQLException {
         return count(table_, "*");
     }
 
+    public void renameTable(Connection con_, String table_, String name_) throws SQLException {
+        executeStatement(con_, "ALTER TABLE " + table_ + " RENAME TO " + name_);
+    }
+
     public void renameTable(String table_, String name_) throws SQLException {
         executeStatement("ALTER TABLE " + table_ + " RENAME TO " + name_);
+    }
+
+    public void dropTable(Connection con_, String name_) throws SQLException {
+        executeStatement(con_, "DROP TABLE " + name_);
+        // VACUUMはSQLite向けのコマンドなのでSQLiteの場合のみ実行する
+        if (jdbc instanceof JdbcSqlite) {
+            executeStatement(con_, "VACUUM;");
+        }
     }
 
     public void dropTable(String name_) throws SQLException {
@@ -319,113 +364,137 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         }
     }
 
-    public void deleteRecordByString(String table_, String keycolumn_, String key_) throws SQLException {
+    public void deleteRecordByString(Connection con_, String table_, String keycolumn_, String key_) throws SQLException {
         PreparedStatement prep = null;
+        prep = con_.prepareStatement("DELETE FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, key_);
+        prep.executeQuery();
+        prep.close();
+    }
+
+    public void deleteRecordByString(String table_, String keycolumn_, String key_) throws SQLException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement("DELETE FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, key_);
-            prep.executeQuery();
-            prep.close();
+            deleteRecordByString(con, table_, keycolumn_, key_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+
+    public void deleteRecordByLong(Connection con_, String table_, String keycolumn_, long key_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("DELETE FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, key_);
+        prep.executeQuery();
+        prep.close();
     }
 
     public void deleteRecordByLong(String table_, String keycolumn_, long key_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("DELETE FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, key_);
-            prep.executeQuery();
-            prep.close();
+            deleteRecordByLong(con, table_, keycolumn_, key_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+
+    public void addLongColumn(Connection con_, String table_, String column_, Long default_) throws SQLException {
+        PreparedStatement prep = null;
+        if (default_ == null) {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " INTEGER");
+        } else {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " INTEGER DEFAULT ? NOT NULL");
+        }
+        if (default_ != null) {
+           prep.setLong(1, default_);
+        }
+        prep.executeQuery();
+        prep.close();
     }
 
     public void addLongColumn(String table_, String column_, Long default_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            if (default_ == null) {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " INTEGER");
-            } else {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " INTEGER DEFAULT ? NOT NULL");
-            }
-            if (default_ != null) {
-               prep.setLong(1, default_);
-            }
-            prep.executeQuery();
-            prep.close();
+            addLongColumn(con, table_, column_, default_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+
+    public void addFloatColumn(Connection con_, String table_, String column_, Float default_) throws SQLException {
+        PreparedStatement prep = null;
+        if (default_ == null) {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " REAL");
+        } else {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " REAL DEFAULT ? NOT NULL");
+        }
+        if (default_ != null) {
+           prep.setFloat(1, default_);
+        }
+        prep.executeQuery();
+        prep.close();
     }
 
     public void addFloatColumn(String table_, String column_, Float default_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            if (default_ == null) {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " REAL");
-            } else {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " REAL DEFAULT ? NOT NULL");
-            }
-            if (default_ != null) {
-               prep.setFloat(1, default_);
-            }
-            prep.executeQuery();
-            prep.close();
+            addFloatColumn(con, table_, column_, default_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+
+    public void addStringColumn(Connection con_, String table_, String column_, String default_) throws SQLException {
+        PreparedStatement prep = null;
+        if (default_ == null) {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " TEXT");
+        } else {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " TEXT DEFAULT ? NOT NULL");
+        }
+        if (default_ != null) {
+           prep.setString(1, default_);
+        }
+        prep.executeQuery();
+        prep.close();
     }
 
     public void addStringColumn(String table_, String column_, String default_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            if (default_ == null) {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " TEXT");
-            } else {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " TEXT DEFAULT ? NOT NULL");
-            }
-            if (default_ != null) {
-               prep.setString(1, default_);
-            }
-            prep.executeQuery();
-            prep.close();
+            addStringColumn(con, table_, column_, default_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+
+    public void addBlobColumn(Connection con_, String table_, String column_, byte[] default_) throws SQLException {
+        PreparedStatement prep = null;
+        if (default_ == null) {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " BLOB");
+        } else {
+            prep = con_.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " BLOB DEFAULT ? NOT NULL");
+        }
+        if (default_ != null) {
+           prep.setBytes(1, default_);
+        }
+        prep.executeQuery();
+        prep.close();
     }
 
     public void addBlobColumn(String table_, String column_, byte[] default_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            if (default_ == null) {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " BLOB");
-            } else {
-                prep = con.prepareStatement("ALTER TABLE " + table_ + " ADD COLUMN " + column_ + " BLOB DEFAULT ? NOT NULL");
-            }
-            if (default_ != null) {
-               prep.setBytes(1, default_);
-            }
-            prep.executeQuery();
-            prep.close();
+            addBlobColumn(con, table_, column_, default_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -433,7 +502,7 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         }
     }
 
-    public void createIndex(String name_, String table_, boolean unique_, String... columns_) throws SQLException {
+    public void createIndex(Connection con_, String name_, String table_, boolean unique_, String... columns_) throws SQLException {
         if (columns_.length == 0) {
             throw new SQLException("インデックス作成に必要なパラメタが不足しています");
         }
@@ -452,21 +521,29 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         }
         sb.append(");");
         PreparedStatement prep = null;
+        prep = con_.prepareStatement(sb.toString());
+        int paramIndex = 1;
+        for (String column : columns_) {
+           prep.setString(paramIndex, column);
+           paramIndex++;
+        }
+        prep.executeQuery();
+        prep.close();
+    }
+
+    public void createIndex(String name_, String table_, boolean unique_, String... columns_) throws SQLException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement(sb.toString());
-            int paramIndex = 1;
-            for (String column : columns_) {
-               prep.setString(paramIndex, column);
-               paramIndex++;
-            }
-            prep.executeQuery();
-            prep.close();
+            createIndex(con, name_, table_, unique_, columns_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+
+    public void dropIndex(Connection con_, String name_) throws SQLException {
+        executeStatement(con_, "DROP INDEX " + name_ + " ;");
     }
 
     public void dropIndex(String name_) throws SQLException {
@@ -474,159 +551,131 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
     }
 
 //===== 単項取得系メソッド ======================================================
-    
-    public long getLongByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
+
+    public long getLongByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
         PreparedStatement prep = null;
         ResultSet rs = null;
+        long result = 0;
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+            result = rs.getLong(valcolumn_);
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
+        }
+        return result;
+    } 
+
+    public long getLongByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
         Connection con = connect();
         long result = 0;
         try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-                result = rs.getLong(valcolumn_);
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
+            result = getLongByString(con, table_, keycolumn_, key_, valcolumn_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
+        }
+        return result;
+    } 
+
+    public long getLongByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
+        PreparedStatement prep = null;
+        ResultSet rs = null;
+        long result = 0;
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+            result = rs.getLong(valcolumn_);
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
         }
         return result;
     } 
 
     public long getLongByLong(String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
-        PreparedStatement prep = null;
-        ResultSet rs = null;
         Connection con = connect();
         long result = 0;
         try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-                result = rs.getLong(valcolumn_);
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
+            result = getLongByLong(con, table_, keycolumn_, key_, valcolumn_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
+        }
+        return result;
+    } 
+
+    public float getFloatByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
+        PreparedStatement prep = null;
+        ResultSet rs = null;
+        float result = 0;
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+            result = rs.getFloat(valcolumn_);
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
         }
         return result;
     } 
 
     public float getFloatByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
-        PreparedStatement prep = null;
-        ResultSet rs = null;
         Connection con = connect();
         float result = 0;
         try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-                result = rs.getFloat(valcolumn_);
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
+            result = getFloatByString(con, table_, keycolumn_, key_, valcolumn_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
+        }
+        return result;
+    } 
+
+    public float getFloatByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
+        PreparedStatement prep = null;
+        ResultSet rs = null;
+        float result = 0;
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+            result = rs.getFloat(valcolumn_);
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
         }
         return result;
     } 
 
     public float getFloatByLong(String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
-        PreparedStatement prep = null;
-        ResultSet rs = null;
         Connection con = connect();
         float result = 0;
         try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-                result = rs.getFloat(valcolumn_);
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
-            con.close();
-        } catch (Exception e) {
-            con.close();
-            throw e;
-        }
-        return result;
-    } 
-    public String getStringByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
-        PreparedStatement prep = null;
-        ResultSet rs = null;
-        Connection con = connect();
-        String result = null;
-        try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-                result = rs.getString(valcolumn_);
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
-            con.close();
-        } catch (Exception e) {
-            con.close();
-            throw e;
-        }
-        return result;
-    } 
-    public String getStringByLong(String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
-        PreparedStatement prep = null;
-        ResultSet rs = null;
-        Connection con = connect();
-        String result = null;
-        try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-                result = rs.getString(valcolumn_);
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
+            result = getFloatByLong(con, table_, keycolumn_, key_, valcolumn_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -635,36 +684,108 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         return result;
     } 
 
-    public byte[] getBlobByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException, IOException {
+    public String getStringByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
         PreparedStatement prep = null;
         ResultSet rs = null;
+        String result = null;
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+            result = rs.getString(valcolumn_);
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
+        }
+        return result;
+    } 
+
+    public String getStringByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException {
         Connection con = connect();
+        String result = null;
+        try {
+            result = getStringByString(con, table_, keycolumn_, key_, valcolumn_);
+            con.close();
+        } catch (Exception e) {
+            con.close();
+            throw e;
+        }
+        return result;
+    } 
+
+    public String getStringByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
+        PreparedStatement prep = null;
+        ResultSet rs = null;
+        String result = null;
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+            result = rs.getString(valcolumn_);
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
+        }
+        return result;
+    } 
+
+    public String getStringByLong(String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException {
+        Connection con = connect();
+        String result = null;
+        try {
+            result = getStringByLong(con, table_, keycolumn_, key_, valcolumn_);
+            con.close();
+        } catch (Exception e) {
+            con.close();
+            throw e;
+        }
+        return result;
+    } 
+
+    public byte[] getBlobByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException, IOException {
+        PreparedStatement prep = null;
+        ResultSet rs = null;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte [] result = new byte[1024];
-        try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-    //            InputStream in = rs.getBinaryStream(valcolumn_);
-    //            while (true) {
-    //                int bytes = in.read(result);
-    //                if (bytes == -1) {
-    //                    break;
-    //                }
-    //                baos.write(result,0,bytes);
-    //            }
-    //            result = baos.toByteArray();
-                result = rs.getBytes(valcolumn_);
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+//            InputStream in = rs.getBinaryStream(valcolumn_);
+//            while (true) {
+//                int bytes = in.read(result);
+//                if (bytes == -1) {
+//                    break;
+//                }
+//                baos.write(result,0,bytes);
+//            }
+//            result = baos.toByteArray();
+            result = rs.getBytes(valcolumn_);
 
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
+        }
+        return result;
+    }
+
+    public byte[] getBlobByString(String table_, String keycolumn_, String key_, String valcolumn_) throws SQLException, IOException {
+        Connection con = connect();
+        byte [] result = new byte[1024];
+        try {
+            result = getBlobByString(con, table_, keycolumn_, key_, valcolumn_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -673,36 +794,42 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         return result;
     }
 
-    public byte[] getBlobByLong(String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException, IOException {
+    public byte[] getBlobByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException, IOException {
         PreparedStatement prep = null;
         ResultSet rs = null;
-        Connection con = connect();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte [] result = new byte[1024];
-        try {
-            prep = con.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, key_);
-            rs = prep.executeQuery();
-            // 結果無しならfalse復帰
-            if (rs.next()) {
-    //            InputStream in = rs.getb.getBinaryStream(valcolumn_);
-    //            while (true) {
-    //                int bytes = in.read(result);
-    //                if (bytes == -1) {
-    //                    break;
-    //                }
-    //                baos.write(result,0,bytes);
-    //            }
-    //            result = baos.toByteArray()
-                result = rs.getBytes(valcolumn_);
+        prep = con_.prepareStatement("SELECT " + valcolumn_ + " FROM " + table_ + " WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, key_);
+        rs = prep.executeQuery();
+        // 結果無しならfalse復帰
+        if (rs.next()) {
+//            InputStream in = rs.getb.getBinaryStream(valcolumn_);
+//            while (true) {
+//                int bytes = in.read(result);
+//                if (bytes == -1) {
+//                    break;
+//                }
+//                baos.write(result,0,bytes);
+//            }
+//            result = baos.toByteArray()
+            result = rs.getBytes(valcolumn_);
 
-                rs.close();
-                prep.close();
-            } else {
-                rs.close();
-                prep.close();
-                throw new SQLException("指定した値が見つかりませんでした");
-            }
+            rs.close();
+            prep.close();
+        } else {
+            rs.close();
+            prep.close();
+            throw new SQLException("指定した値が見つかりませんでした");
+        }
+        return result;
+    } 
+
+    public byte[] getBlobByLong(String table_, String keycolumn_, long key_, String valcolumn_) throws SQLException, IOException {
+        Connection con = connect();
+        byte [] result = new byte[1024];
+        try {
+            result = getBlobByLong(con, table_, keycolumn_, key_, valcolumn_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -713,120 +840,144 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
 
 //===== 単項設定系メソッド ======================================================
     
-    public void updateLongByString(String table_, String keycolumn_, String key_, String valcolumn_, long value_) throws SQLException {
+    public void updateLongByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, long value_) throws SQLException {
         PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, value_);
+        prep.setString(2, key_);
+        prep.executeUpdate();
+        prep.close();
+    } 
+    public void updateLongByString(String table_, String keycolumn_, String key_, String valcolumn_, long value_) throws SQLException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, value_);
-            prep.setString(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateLongByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void updateLongByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, long value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setLong(1, value_);
+        prep.setLong(2, key_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void updateLongByLong(String table_, String keycolumn_, long key_, String valcolumn_, long value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setLong(1, value_);
-            prep.setLong(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateLongByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void updateFloatByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, float value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setFloat(1, value_);
+        prep.setString(2, key_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void updateFloatByString(String table_, String keycolumn_, String key_, String valcolumn_, float value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setFloat(1, value_);
-            prep.setString(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateFloatByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void updateFloatByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, float value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setFloat(1, value_);
+        prep.setLong(2, key_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void updateFloatByLong(String table_, String keycolumn_, long key_, String valcolumn_, float value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setFloat(1, value_);
-            prep.setLong(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateFloatByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void updateStringByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, String value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, value_);
+        prep.setString(2, key_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void updateStringByString(String table_, String keycolumn_, String key_, String valcolumn_, String value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, value_);
-            prep.setString(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateStringByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void updateStringByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, String value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setString(1, value_);
+        prep.setLong(2, key_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void updateStringByLong(String table_, String keycolumn_, long key_, String valcolumn_, String value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setString(1, value_);
-            prep.setLong(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateStringByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void updateBlobByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setBytes(1, value_);
+        prep.setString(2, key_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void updateBlobByString(String table_, String keycolumn_, String key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setBytes(1, value_);
-            prep.setString(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateBlobByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
     } 
-    public void updateBlobByLong(String table_, String keycolumn_, long key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
+    public void updateBlobByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
         PreparedStatement prep = null;
+        prep = con_.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
+        prep.setBytes(1, value_);
+        prep.setLong(2, key_);
+        prep.executeUpdate();
+        prep.close();
+    } 
+    public void updateBlobByLong(String table_, String keycolumn_, long key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement("UPDATE " + table_ + " SET " + valcolumn_ + " = ? WHERE " + keycolumn_ + " = ?");
-            prep.setBytes(1, value_);
-            prep.setLong(2, key_);
-            prep.executeUpdate();
-            prep.close();
+            updateBlobByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -836,120 +987,144 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
 
 //===== 単項挿入系メソッド ======================================================
     
-    public void insertLongByString(String table_, String key_, long value_) throws SQLException {
+    public void insertLongByString(Connection con_, String table_, String key_, long value_) throws SQLException {
         PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setLong(2, value_);
+        prep.executeUpdate();
+        prep.close();
+    } 
+    public void insertLongByString(String table_, String key_, long value_) throws SQLException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setLong(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertLongByString(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertLongByLong(Connection con_, String table_, long key_, long value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setLong(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertLongByLong(String table_, long key_, long value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setLong(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertLongByLong(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertFloatByString(Connection con_, String table_, String key_, float value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setFloat(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertFloatByString(String table_, String key_, float value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setFloat(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertFloatByString(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertFloatByLong(Connection con_, String table_, long key_, float value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setFloat(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertFloatByLong(String table_, long key_, float value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setFloat(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertFloatByLong(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertStringByString(Connection con_, String table_, String key_, String value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setString(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertStringByString(String table_, String key_, String value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setString(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertStringByString(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertStringByLong(Connection con_, String table_, long key_, String value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setString(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertStringByLong(String table_, long key_, String value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setString(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertStringByLong(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertBlobByString(Connection con_, String table_, String key_, byte[] value_) throws SQLException, IOException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setBytes(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertBlobByString(String table_, String key_, byte[] value_) throws SQLException, IOException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setBytes(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertBlobByString(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
     } 
-    public void insertBlobByLong(String table_, long key_, byte[] value_) throws SQLException, IOException {
+    public void insertBlobByLong(Connection con_, String table_, long key_, byte[] value_) throws SQLException, IOException {
         PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setBytes(2, value_);
+        prep.executeUpdate();
+        prep.close();
+    } 
+    public void insertBlobByLong(String table_, long key_, byte[] value_) throws SQLException, IOException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + " VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setBytes(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertBlobByLong(con, table_, key_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
@@ -959,127 +1134,150 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
 
 //===== カラム指定単項挿入系メソッド ======================================================
     
-    public void insertLongByString(String table_, String keycolumn_, String key_, String valcolumn_, long value_) throws SQLException {
+    public void insertLongByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, long value_) throws SQLException {
         PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setLong(2, value_);
+        prep.executeUpdate();
+        prep.close();
+    } 
+    public void insertLongByString(String table_, String keycolumn_, String key_, String valcolumn_, long value_) throws SQLException {
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setLong(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertLongByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertLongByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, long value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setLong(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertLongByLong(String table_, String keycolumn_, long key_, String valcolumn_, long value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setLong(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertLongByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertFloatByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, float value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setFloat(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertFloatByString(String table_, String keycolumn_, String key_, String valcolumn_, float value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setFloat(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertFloatByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertFloatByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, float value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setFloat(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertFloatByLong(String table_, String keycolumn_, long key_, String valcolumn_, float value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setFloat(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertFloatByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    }
+    public void insertStringByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, String value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setString(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertStringByString(String table_, String keycolumn_, String key_, String valcolumn_, String value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setString(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertStringByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertStringByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, String value_) throws SQLException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setString(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertStringByLong(String table_, String keycolumn_, long key_, String valcolumn_, String value_) throws SQLException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setString(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertStringByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertBlobByString(Connection con_, String table_, String keycolumn_, String key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setString(1, key_);
+        prep.setBytes(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertBlobByString(String table_, String keycolumn_, String key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setString(1, key_);
-            prep.setBytes(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertBlobByString(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
+    } 
+    public void insertBlobByLong(Connection con_, String table_, String keycolumn_, long key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
+        PreparedStatement prep = null;
+        prep = con_.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
+        prep.setLong(1, key_);
+        prep.setBytes(2, value_);
+        prep.executeUpdate();
+        prep.close();
     } 
     public void insertBlobByLong(String table_, String keycolumn_, long key_, String valcolumn_, byte[] value_) throws SQLException, IOException {
-        PreparedStatement prep = null;
         Connection con = connect();
         try {
-            prep = con.prepareStatement("INSERT INTO " + table_ + "(" + keycolumn_ + ", " + valcolumn_ + ") VALUES(?, ?)");
-            prep.setLong(1, key_);
-            prep.setBytes(2, value_);
-            prep.executeUpdate();
-            prep.close();
+            insertBlobByLong(con, table_, keycolumn_, key_, valcolumn_, value_);
             con.close();
         } catch (Exception e) {
             con.close();
             throw e;
         }
     } 
-
 
 //===== Framework共通設定系メソッド ==============================================
 
@@ -1099,42 +1297,79 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         insertLongSettings("version", 1L);
     }
 
+    public void insertLongSettings(Connection con_, String name_, Long snum_) throws SQLException {
+        insertLongByString(con_, TABLE_SETTING, "name", name_, "snum", snum_);
+    }
     public void insertLongSettings(String name_, Long snum_) throws SQLException {
         insertLongByString(TABLE_SETTING, "name", name_, "snum", snum_);
     }
 
+    public void insertFloatSettings(Connection con_, String name_, float fnum_) throws SQLException {
+        insertFloatByString(con_, TABLE_SETTING, "name", name_, "fnum", fnum_);
+    }
     public void insertFloatSettings(String name_, float fnum_) throws SQLException {
         insertFloatByString(TABLE_SETTING, "name", name_, "fnum", fnum_);
     }
 
+    public void insertStringSettings(Connection con_, String name_, String str_) throws SQLException {
+        insertStringByString(con_, TABLE_SETTING, "name", name_, "str", str_);
+    }
     public void insertStringSettings(String name_, String str_) throws SQLException {
         insertStringByString(TABLE_SETTING, "name", name_, "str", str_);
     }
 
+    public void insertBlobSettings(Connection con_, String name_, byte[] data_) throws SQLException, IOException {
+        insertBlobByString(con_, TABLE_SETTING, "name", name_, "data", data_);
+    }
     public void insertBlobSettings(String name_, byte[] data_) throws SQLException, IOException {
         insertBlobByString(TABLE_SETTING, "name", name_, "data", data_);
+    }
+
+    public long getLongSettings(Connection con_, String name_) throws SQLException {
+        return getLongByString(con_, TABLE_SETTING, "name", name_, "snum");
     }
     public long getLongSettings(String name_) throws SQLException {
         return getLongByString(TABLE_SETTING, "name", name_, "snum");
     }
 
+    public float getFloatSettings(Connection con_, String name_) throws SQLException {
+        return getFloatByString(con_, TABLE_SETTING, "name", name_, "fnum");
+    }
     public float getFloatSettings(String name_) throws SQLException {
         return getFloatByString(TABLE_SETTING, "name", name_, "fnum");
     }
 
+    public String getStringSettings(Connection con_, String name_) throws SQLException {
+        return getStringByString(con_, TABLE_SETTING, "name", name_, "str");
+    }
     public String getStringSettings(String name_) throws SQLException {
         return getStringByString(TABLE_SETTING, "name", name_, "str");
     }
 
+    public byte[] getBlobSettings(Connection con_, String name_) throws SQLException, IOException {
+        return getBlobByString(con_, TABLE_SETTING, "name", name_, "data");
+    }
     public byte[] getBlobSettings(String name_) throws SQLException, IOException {
         return getBlobByString(TABLE_SETTING, "name", name_, "data");
     }
 
+    public long getSettingsVersion(Connection con_) throws SQLException {
+        return getLongByString(con_, TABLE_SETTING, "name", "version", "snum");
+    }
     public long getSettingsVersion() throws SQLException {
         return getLongByString(TABLE_SETTING, "name", "version", "snum");
     }
+
+    public void updateSettingsVersion(Connection con_, long version_) throws SQLException {
+        updateLongByString(con_, TABLE_SETTING, "name", "version", "snum", version_);
+    }
     public void updateSettingsVersion(long version_) throws SQLException {
         updateLongByString(TABLE_SETTING, "name", "version", "snum", version_);
+    }
+
+    public void updateSettingsVersion(Connection con_) throws SQLException {
+        updateSettingsVersion(con_, getSettingsVersion() + 1);
+        dbversion = getSettingsVersion(con_);
     }
     public void updateSettingsVersion() throws SQLException {
         updateSettingsVersion(getSettingsVersion() + 1);
