@@ -107,13 +107,13 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
             if (!isExistSettings()) {
                 // 無い場合は作成する
                 log.info("Start create framework settings.[" + dbname + "]");
-                createSettings();
+                createSettings(con);
                 log.info("Created framework settings.[" + dbname + "]");
             } else {
                 log.info("Exist framework settings.[" + dbname + "]");
             }
             // DBバージョンを保持しておく
-            dbversion = getSettingsVersion();
+            dbversion = getSettingsVersion(con);
             log.info("current " + dbname + " version is "+dbversion);
             // migration処理を呼ぶ
             migrationData(con);
@@ -1287,6 +1287,15 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
         return constans(TABLE_SETTING);
     }
     
+    public void createSettings(Connection con_) throws SQLException {
+        log.info("create framework settings table.");
+        // 絶対重いだろこの処理…
+        MessageFormat mf = new MessageFormat("CREATE TABLE {0} ( name {1}, snum {2}, fnum {3}, str {4}, data {5}, PRIMARY KEY {6})");
+        executeStatement(con_, mf.format(new String[]{ TABLE_SETTING, CTYPE.STRING.get(jdbc), CTYPE.LONG.get(jdbc), CTYPE.FLOAT.get(jdbc), CTYPE.STRING.get(jdbc), CTYPE.BLOB.get(jdbc), CTYPE.STRING.primary(jdbc, "name")}));
+//        executeStatement("CREATE TABLE " + TABLE_SETTING + "( name TEXT PRIMARY KEY(128), snum INTEGER, fnum REAL, str TEXT, data BLOB )");
+        log.info("insert framework settings default value.");
+        insertLongSettings(con_, "version", 1L);
+    }
     public void createSettings() throws SQLException {
         log.info("create framework settings table.");
         // 絶対重いだろこの処理…
