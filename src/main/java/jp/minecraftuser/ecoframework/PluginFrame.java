@@ -437,10 +437,13 @@ public abstract class PluginFrame extends JavaPlugin {
      * @param name リスナー名
      * @return リスナーフレームインスタンス
      */
+    public ListenerFrame getPluginListener(String name) {
+        return listenerMap.get(name);
+    }
+    @Deprecated
     public ListenerFrame getPluginListerner(String name) {
         return listenerMap.get(name);
     }
-
     /**
      * リスナー登録処理
      * @param frame_ リスナーフレームインスタンス
