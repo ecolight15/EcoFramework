@@ -1377,7 +1377,7 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
     }
 
     public void updateSettingsVersion(Connection con_) throws SQLException {
-        updateSettingsVersion(con_, getSettingsVersion() + 1);
+        updateSettingsVersion(con_, getSettingsVersion(con_)+ 1);
         dbversion = getSettingsVersion(con_);
     }
     public void updateSettingsVersion() throws SQLException {
