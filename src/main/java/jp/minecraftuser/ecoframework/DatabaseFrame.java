@@ -108,12 +108,14 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
                 // 無い場合は作成する
                 log.info("Start create framework settings.[" + dbname + "]");
                 createSettings(con);
+                justCreated = true;
                 log.info("Created framework settings.[" + dbname + "]");
             } else {
                 log.info("Exist framework settings.[" + dbname + "]");
             }
             // DBバージョンを保持しておく
             dbversion = getSettingsVersion(con);
+            // Todo: isJustCreated はMySQL等だと既に存在するDBに接続するのでfalseっぽい。新規接続はsettingsテーブルの有無でチェックするか・・・？
             log.info("current " + dbname + " version is "+dbversion);
             // migration処理を呼ぶ
             migrationData(con);
