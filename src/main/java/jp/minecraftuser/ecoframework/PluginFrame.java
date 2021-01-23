@@ -4,6 +4,7 @@ package jp.minecraftuser.ecoframework;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jp.minecraftuser.ecoframework.iface.Manageable;
@@ -12,6 +13,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -33,6 +35,7 @@ public abstract class PluginFrame extends JavaPlugin {
     protected HashMap<String, JavaPlugin> otherMap = null;
     protected HashMap<String, LoggerFrame> loggerMap = null;
     protected ManagerFrame manager = null;
+    protected HashMap<UUID, CommandFrame> confirm_cmds;
 
     /**
      * 初期化処理
@@ -48,6 +51,7 @@ public abstract class PluginFrame extends JavaPlugin {
         refMap = new HashMap<>();
         otherMap = new HashMap<>();
         loggerMap = new HashMap<>();
+        confirm_cmds = new HashMap<>();
 
         // 概ね読み込み順序不具合でない感じにinitialize呼んでいく
         // コンフィグ初期ロード
@@ -538,6 +542,60 @@ public abstract class PluginFrame extends JavaPlugin {
         loggerMap.clear();
     }
 
+    /**
+     * コマンドの実行確認を開始する(コールバック登録)
+     * @param sender
+     * @param frame 
+     */
+    public void start_confirm(CommandSender sender, CommandFrame frame) {
+        UUID uuid = ((Player)sender).getUniqueId();
+        // 既に登録があればキャンセル
+        if (confirm_cmds.containsKey(uuid)) {
+            cancel_confirm(sender);
+        }
+
+        // 実行待機コマンドの挿入
+        confirm_cmds.put(uuid, frame);
+    }
+    
+    /**
+     * コマンドの実行確認をキャンセルする 
+     * @param sender
+     */
+    public void cancel_confirm(CommandSender sender) {
+        UUID uuid = ((Player)sender).getUniqueId();
+        // cancelのコールバック呼び出しとコマンドの削除
+        if (confirm_cmds.containsKey(uuid)) {
+            confirm_cmds.get(uuid).cancelCallback(sender);
+            confirm_cmds.remove(uuid);
+        }
+    }
+
+    /**
+     * コマンドの実行確認を完了する 
+     * @param sender
+     */
+    public void accept_confirm(CommandSender sender) {
+        UUID uuid = ((Player)sender).getUniqueId();
+        // acceptのコールバック呼び出しとコマンドの削除
+        if (confirm_cmds.containsKey(uuid)) {
+            confirm_cmds.get(uuid).acceptCallback(sender);
+            confirm_cmds.remove(uuid);
+        }
+    }
+    
+    /**
+     * 指定種別のコマンドのconfirm待ちをしているかどうかをチェックする
+     * @param sender
+     * @return 
+     */
+    public boolean isConfirm(CommandSender sender) {
+        UUID uuid = ((Player)sender).getUniqueId();
+        // 指定タイプのコンファーム待ちしているかはタイプテーブルだけで判断する
+        if (!confirm_cmds.containsKey(uuid)) { return false; }
+        return true;
+    }
+    
     /**
      * 設定初期化
      * 使用するyamlファイルを全て登録する

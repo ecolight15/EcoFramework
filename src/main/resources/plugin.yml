@@ -10,3 +10,11 @@ commands:
     description: Show All EcoFramework plugin permissions.
     usage: /<command> xxx
     permission: ecoframework.permissions
+  ecoframework accept:
+    description: Accept confirm command.
+    usage: /<command>
+    permission: ecoframework.accept
+  ecoframework cancel:
+    description: Cancel confirm command.
+    usage: /<command>
+    permission: ecoframework.cancel

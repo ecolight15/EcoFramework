@@ -5,10 +5,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import static jp.minecraftuser.ecoframework.Utl.sendPluginMessage;
 import jp.minecraftuser.ecoframework.iface.Manageable;
 import jp.minecraftuser.ecoframework.iface.ReloadNotifiable;
+import jp.minecraftuser.ecoframework.plugin.EcoFramework;
 import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -188,18 +191,19 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
                 result.add(s);
             }
         }
-        
+
         // 実装にもArrayListを返させてマージする
         // 実装が返さない場合、かつサブコマンドが候補に無い場合にはデフォルトでPlayerリスト(前方一致)を返却する
         List<String> list = getTabComplete(sender, cmd, string, strings);
-        if (((list == null) || (list.isEmpty())) && (result.isEmpty())) {
-            list = new ArrayList<>();
-            for (Player p : plg.getServer().getOnlinePlayers()) {
-                if (p.getName().toLowerCase().startsWith(strings[0].toLowerCase())) {
-                    list.add(p.getName());
-                }
-            }
-        }
+        // 何も候補がない場合プレイヤー一覧を返していたが、プレイヤーを指定する場面でないのに表示されると混乱をきたすため空のままにする
+//        if (((list == null) || (list.isEmpty())) && (result.isEmpty())) {
+//            list = new ArrayList<>();
+//            for (Player p : plg.getServer().getOnlinePlayers()) {
+//                if (p.getName().toLowerCase().startsWith(strings[0].toLowerCase())) {
+//                    list.add(p.getName());
+//                }
+//            }
+//        }
         // マージ
         if (list != null) {
             for (String s : list) {
@@ -230,7 +234,7 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
      * @param strings パラメタ文字列配列
      * @return 保管文字列配列
      */
-    private List<String> getTabComplete(CommandSender sender, Command cmd, String string, String[] strings) {
+    protected List<String> getTabComplete(CommandSender sender, Command cmd, String string, String[] strings) {
         // optional method
         return null;
     }
@@ -304,6 +308,38 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
     }
     
     /**
+     * 確認待ちの登録
+     * @param sender 
+     */
+    protected void confirm(CommandSender sender) {
+        // 既にconfirm待機中の場合、キャンセルが動作するので実行確認メッセージの前にstart_confirmしておく
+        // confirm/cancel コマンドは一括でEcoFrameworkプラグインに処理させるため、EcoFrameworkプラグインにconfirm開始させる
+        ((EcoFramework)plg.getServer().getPluginManager().getPlugin("EcoFramework")).start_confirm(sender, this);
+
+        // 本当にコマンドを実行しますか？[実行する][キャンセル]
+        String[] ver_str = plg.getServer().getBukkitVersion().split(Pattern.quote("."));
+        int[] ver = {Integer.parseInt(ver_str[0]),Integer.parseInt(ver_str[1])};
+        if (ver[0] == 1 && ver[1] <= 7) {
+            // 1.15 
+            sendPluginMessage(plg, sender, "本当にコマンドを実行しますか？");
+            sendPluginMessage(plg, sender, "実行：/ecoframework accept");
+            sendPluginMessage(plg, sender, "中止：/ecoframework cancel");
+        } else if (ver[0] == 1 && (ver[1] >= 8) && (ver[1] <= 15)){
+            // 1.8 - 1.15 
+            plg.getServer().dispatchCommand(
+                plg.getServer().getConsoleSender(),
+                "tellraw " + sender.getName() + " " + "[\"\",{\"text\":\"\\u672c\\u5f53\\u306b\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u5b9f\\u884c\\u3057\\u307e\\u3059\\u304b\\uff1f\\n\"},{\"text\":\"[\\u5b9f\\u884c\\u3059\\u308b]\",\"bold\":true,\"color\":\"aqua\",\"clickEvent\":{\"action\":\"run_command\",\"value\":\"/ecoframework accept\"},\"hoverEvent\":{\"action\":\"show_text\",\"value\":\"\\u30af\\u30ea\\u30c3\\u30af\\u3067\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u5b9f\\u884c\\u3057\\u307e\\u3059\"}},{\"text\":\" / \"},{\"text\":\"[\\u30ad\\u30e3\\u30f3\\u30bb\\u30eb]\",\"bold\":true,\"color\":\"red\",\"clickEvent\":{\"action\":\"run_command\",\"value\":\"/ecoframework cancel\"},\"hoverEvent\":{\"action\":\"show_text\",\"value\":\"\\u30af\\u30ea\\u30c3\\u30af\\u3067\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u30ad\\u30e3\\u30f3\\u30bb\\u30eb\\u3057\\u307e\\u3059\"}}]"
+            );
+        } else {
+            // 1.16 -
+            plg.getServer().dispatchCommand(
+                plg.getServer().getConsoleSender(),
+                "tellraw " + sender.getName() + " " + "[\"\",{\"text\":\"\\u672c\\u5f53\\u306b\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u5b9f\\u884c\\u3057\\u307e\\u3059\\u304b\\uff1f\\n\"},{\"text\":\"[\\u5b9f\\u884c\\u3059\\u308b]\",\"bold\":true,\"color\":\"aqua\",\"clickEvent\":{\"action\":\"run_command\",\"value\":\"/ecoframework accept\"},\"hoverEvent\":{\"action\":\"show_text\",\"contents\":\"\\u30af\\u30ea\\u30c3\\u30af\\u3067\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u5b9f\\u884c\\u3057\\u307e\\u3059\"}},{\"text\":\" / \"},{\"text\":\"[\\u30ad\\u30e3\\u30f3\\u30bb\\u30eb]\",\"bold\":true,\"color\":\"red\",\"clickEvent\":{\"action\":\"run_command\",\"value\":\"/ecoframework cancel\"},\"hoverEvent\":{\"action\":\"show_text\",\"contents\":\"\\u30af\\u30ea\\u30c3\\u30af\\u3067\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u30ad\\u30e3\\u30f3\\u30bb\\u30eb\\u3057\\u307e\\u3059\"}}]"
+            );
+        }
+    }
+    
+    /**
      * コマンド権限文字列設定
      * @return 権限文字列
      */
@@ -316,5 +352,22 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
      * @return コマンド処理成否
      */
     protected abstract boolean worker(CommandSender sender, String[] args);
-            
+
+    /**
+     * accept 受付用
+     * @param sender 
+     */
+    protected void acceptCallback(CommandSender sender) {
+        // optional
+        log.log(Level.INFO, "callback accept not supported:{0}", name);
+    }
+    
+    /**
+     * cancel 受付用
+     * @param sender 
+     */
+    protected void cancelCallback(CommandSender sender) {
+        // optional
+        log.log(Level.INFO, "callback cancel not supported:{0}", name);
+    }
 }

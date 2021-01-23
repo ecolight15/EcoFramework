@@ -67,6 +67,8 @@ public class EcoFramework extends PluginFrame {
         // EcoFramework本体コマンド
         CommandFrame cmd = new EcoFrameworkCommand(this, "ecoframework");
         cmd.addCommand(new EcoFrameworkPermissionsCommand(this, "permissions"));
+        cmd.addCommand(new EcoFrameworkAcceptCommand(this, "accept"));
+        cmd.addCommand(new EcoFrameworkCancelCommand(this, "cancel"));
         registerPluginCommand(cmd);
     }
 }

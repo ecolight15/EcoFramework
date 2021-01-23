@@ -13,10 +13,10 @@ import org.bukkit.entity.Player;
  * @author ecolight
  */
 public abstract class AsyncProcessFrame extends AsyncFrame {
-    private ConcurrentLinkedQueue<PayloadFrame> queue = new ConcurrentLinkedQueue<>();
     private Long count;
     private Long sleep;
     private Server server;
+    protected ConcurrentLinkedQueue<PayloadFrame> queue = new ConcurrentLinkedQueue<>();
     /**
      * 親スレッド用コンストラクタ
      * @param plg_ プラグインフレームインスタンス
