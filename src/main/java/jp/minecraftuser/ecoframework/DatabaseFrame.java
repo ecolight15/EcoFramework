@@ -39,7 +39,7 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
      * コンストラクタ兼Sqliteデータベース接続生成処理
      * @param plg_ プラグインインスタンス
      * @param dbname_ データベース名
-     * @param name_ データベース名
+     * @param name_ 一覧登録名
      * @throws ClassNotFoundException
      * @throws SQLException
      */
@@ -64,7 +64,7 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
      * コンストラクタ兼MySQLデータベース接続生成処理
      * @param plg_ プラグインインスタンス
      * @param dbname_ データベース名
-     * @param name_ データベース名
+     * @param name_ 一覧登録名
      * @throws ClassNotFoundException
      * @throws SQLException
      */
@@ -137,12 +137,32 @@ abstract public class DatabaseFrame implements ReloadNotifiable, Manageable {
      * コンストラクタ兼データベース登録処理
      * @param frame_ データベースフレーム
      */
+    @Deprecated
     public DatabaseFrame(DatabaseFrame frame_) {
         plg = frame_.getPluginFrame();
         log = plg.getLogger();
         conf = plg.getDefaultConfig();
         manager = plg.getManager();
         name = frame_.getName();
+        dbname = frame_.getDBName();
+        addr = "";
+        user = "";
+        pass = "";
+        // DBフレームインスタンスを受領した場合には対象コネクションに対する操作を実施する
+        jdbc = frame_.getJdbc();
+    }
+
+    /**
+     * コンストラクタ兼データベース登録処理(別名付与)
+     * @param frame_ データベースフレーム
+     * @param name_ 一覧登録名
+     */
+    public DatabaseFrame(DatabaseFrame frame_, String name_) {
+        plg = frame_.getPluginFrame();
+        log = plg.getLogger();
+        conf = plg.getDefaultConfig();
+        manager = plg.getManager();
+        name = name_;
         dbname = frame_.getDBName();
         addr = "";
         user = "";
