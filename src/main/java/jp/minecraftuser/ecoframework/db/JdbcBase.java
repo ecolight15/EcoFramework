@@ -176,8 +176,10 @@ public abstract class JdbcBase {
      */
     public void close() {
         if (owner) {
-            hikari.close();
-            hikari = null;
+            if (hikari != null) {
+                hikari.close();
+                hikari = null;
+            }
         } else {
             log.warning("["+dbname+"] database のオーナーではないためクローズをスキップしました");
         }
