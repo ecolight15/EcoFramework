@@ -179,6 +179,8 @@ public abstract class JdbcBase {
             if (hikari != null) {
                 hikari.close();
                 hikari = null;
+            } else {
+                log.warning("["+dbname+"] database が null なのでクローズをスキップしました");
             }
         } else {
             log.warning("["+dbname+"] database のオーナーではないためクローズをスキップしました");
