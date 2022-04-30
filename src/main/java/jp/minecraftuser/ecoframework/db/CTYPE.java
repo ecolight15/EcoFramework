@@ -74,6 +74,31 @@ public enum CTYPE {
     },
 
     /**
+     * 文字列型処理
+     */
+    STRING_KEY {
+        @Override
+        public String get(JdbcBase base) {
+            if (base instanceof JdbcSqlite) {
+                return "TEXT";
+            } else if (base instanceof JdbcMySQL) {
+                return "VARCHAR(255)";
+            }
+            return null;
+        }
+
+        @Override
+        public String primary(JdbcBase base, String key) {
+            if (base instanceof JdbcSqlite) {
+                return mf.format(new String[]{key});
+            } else if (base instanceof JdbcMySQL) {
+                return mf_size.format(new String[]{key});
+            }
+            return null;
+        }
+    },
+
+    /**
      * バイナリ型処理
      */
     BLOB {
