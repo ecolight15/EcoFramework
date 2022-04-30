@@ -97,6 +97,25 @@ public enum CTYPE {
             return null;
         }
     },
+    /**
+     * バイナリ型処理
+     */
+    AUTOINCREMENT {
+        @Override
+        public String get(JdbcBase base) {
+            if (base instanceof JdbcSqlite) {
+                return "AUTOINCREMENT";
+            } else if (base instanceof JdbcMySQL) {
+                return "AUTO_INCREMENT";
+            }
+            return null;
+        }
+
+        @Override
+        public String primary(JdbcBase base, String key) {
+            return key;
+        }
+    },
     ;
     private static final MessageFormat mf = new MessageFormat("({0})");
     private static final MessageFormat mf_size = new MessageFormat("({0}(255))");
