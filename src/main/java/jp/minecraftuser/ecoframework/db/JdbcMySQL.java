@@ -25,7 +25,7 @@ public class JdbcMySQL extends JdbcBase {
     @Override
     protected String connectDB() {
         // 指定された名前のdbを接続する。
-        return "jdbc:mysql://"+addr+"/"+dbname;
+        return "jdbc:mysql://"+addr+"/"+dbname+"?enabledTLSProtocols=TLSv1.2";
     }
 
     @Override
