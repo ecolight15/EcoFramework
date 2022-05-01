@@ -51,7 +51,7 @@ public class JdbcMySQL extends JdbcBase {
         Connection con = connect();
         boolean result = false;
         try {
-            prep = con.prepareStatement("SELECT * FROM information_schema.columns WHERE table_name = ?");
+            prep = con.prepareStatement("SELECT * FROM information_schema.columns WHERE table_schema LIKE '%" + dbname + "%' AND table_name = ?");
             prep.setString(1, table_);
             rs = prep.executeQuery();
             result = rs.next();
