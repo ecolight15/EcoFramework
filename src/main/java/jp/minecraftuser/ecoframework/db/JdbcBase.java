@@ -78,6 +78,9 @@ public abstract class JdbcBase {
         // コネクションプーリングで投げるSQL
         config.setConnectionInitSql("SELECT 1");
         
+        // コネクションリーク検出有効化
+        config.setLeakDetectionThreshold(5000);
+        
         // DB接続
         hikari = new HikariDataSource(config);
 
