@@ -154,7 +154,11 @@ public abstract class CommandFrame implements ReloadNotifiable, Manageable {
         // パラメタが2以上かつ1つ目のパラメタが管理下のサブコマンドだったら処理を移譲する
         if ((!cmds.isEmpty()) &&
             (strings.length >= 2)) {
-            if (cmds.containsKey(strings[0].toLowerCase())) {
+            String check = strings[0].toLowerCase();
+            if (check.startsWith(plg.getName().toLowerCase() + ":")) {
+                check = check.substring(check.lastIndexOf(":") + 1);
+            }
+            if (cmds.containsKey(check)) {
                 ArrayList<String> new_args = new ArrayList();
                 // パラメタ配列から移譲コマンドのパラメタを削り取る
                 Boolean first = true;

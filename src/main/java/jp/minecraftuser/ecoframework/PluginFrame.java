@@ -288,6 +288,9 @@ public abstract class PluginFrame extends JavaPlugin {
         // newだけした空のListを返すと候補なしとなりTABを続けて押しても何も起きなくなる
 
         // 自分の管理するコマンドでない場合には無視する(多分plugin.ymlに書いたコマンドの候補しか来ないが)
+        if (string.startsWith(getName().toLowerCase() + ":")) {
+            string = string.substring(string.lastIndexOf(":") + 1);
+        }
         if (!cmdMap.containsKey(string.toLowerCase())) {
             return new ArrayList<>();
         }
