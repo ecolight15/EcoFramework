@@ -112,6 +112,28 @@ userdatadb:
 
 ## 開発者向けAPI
 
+### Maven依存関係の追加
+
+EcoFrameworkはMavenプロジェクトの依存関係として指定することができます。
+
+#### リポジトリの指定
+```xml
+<repository>
+    <id>eco-plugin</id>
+    <url>http://ecolight15.github.io/mvn_rep/</url>
+</repository>
+```
+
+#### 依存関係の指定  
+```xml
+<dependency>
+    <groupId>jp.minecraftuser</groupId>
+    <artifactId>EcoFramework</artifactId>
+    <version>0.30</version>
+    <scope>provided</scope>
+</dependency>
+```
+
 ### 基本的な使用方法
 
 EcoFrameworkを使用したプラグインの作成：
@@ -165,10 +187,7 @@ public class MyCommand extends CommandFrame {
     
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String commandLabel, String[] args) {
-        if (args.length == 0) {
-            sendPluginMessage(sender, "使用方法: /" + commandLabel + " <引数>");
-            return true;
-        }
+        if (!checkRange(sender, args, 0, 1)) return true;
         
         // コマンド処理をここに実装
         sendPluginMessage(sender, "コマンドが実行されました: " + args[0]);
@@ -196,11 +215,38 @@ public class MyDatabase extends DatabaseFrame {
     
     @Override
     protected void migrationData(Connection con) throws SQLException {
-        // テーブル作成
-        executeStatement("CREATE TABLE IF NOT EXISTS user_data (" +
-                        "id INTEGER PRIMARY KEY," +
-                        "player_name TEXT NOT NULL," +
-                        "data TEXT)");
+        // dbversion: フレームワーク管理のDB版数（ユーザーが設定可能）
+        // justCreated: 新規作成された直後かどうかを示すbool値
+        
+        // 例: 版数管理によるDBマイグレーション処理
+        if (justCreated) {
+            // 新規作成時は最新のテーブル構造を作成
+            executeStatement("CREATE TABLE user_data (" +
+                            "id INTEGER PRIMARY KEY," +
+                            "player_name TEXT NOT NULL," +
+                            "email TEXT," +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                            "data TEXT)");
+            
+            // 新規作成時は最新版に設定
+            updateSettingsVersion(con, 2);
+            
+        } else {
+            // 既存DBの場合、版数に応じてマイグレーション
+            if (dbversion == 1) {
+                // 版数1から2へのマイグレーション
+                executeStatement("ALTER TABLE user_data ADD COLUMN email TEXT");
+                executeStatement("ALTER TABLE user_data ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+                
+                // 版数をインクリメント
+                updateSettingsVersion(con);
+            }
+            
+            // 版数2以降の場合は何もしない（最新版）
+        }
+        
+        // この関数を抜ける段階で、新規作成・既存更新に関わらず
+        // 同じテーブル構造になることを保証
     }
     
     public void saveUserData(String playerName, String data) {
