@@ -23,6 +23,36 @@ This test class validates that the test setup is working correctly and demonstra
 - **testFullWidthSpaceReplacement()**: Tests full-width space replacement
 - **testStringMerging()**: Tests string array merging logic
 
+### UtilityAlgorithmTest.java
+
+This test class focuses on the core algorithms used in the EcoFramework utility functions:
+
+- **testColorCodeReplacement()**: Tests color code replacement patterns
+- **testFullWidthSpaceReplacement()**: Tests full-width space conversion
+- **testCombinedReplacement()**: Tests combined color and space replacement
+- **testStringMerging()**: Tests string array merging algorithm
+- **testEdgeCases()**: Tests edge cases and special characters
+
+### CommandFrameworkTest.java
+
+This test class demonstrates testing approaches for command framework functionality:
+
+- **testCommandNameValidation()**: Tests command name validation logic
+- **testCommandArgumentParsing()**: Tests command argument parsing
+- **testPermissionStringGeneration()**: Tests permission string generation
+- **testCommandHierarchy()**: Tests command hierarchy validation
+- **testTabCompletion()**: Tests tab completion logic
+
+### BukkitIntegrationTest.java
+
+This test class demonstrates how to structure tests for Bukkit-dependent functionality:
+
+- **testMessageFormatting()**: Tests message formatting for console vs player output
+- **testParameterizedMessageFormatting()**: Tests parameterized message formatting
+- **testTagMessageFormatting()**: Tests tag-based message formatting
+- **testSenderTypeDetection()**: Tests command sender type detection
+- **testPermissionLogic()**: Tests permission validation and hierarchy
+
 ## Running Tests
 
 Due to Spigot dependencies in the main code, the current setup requires the following to run tests:
