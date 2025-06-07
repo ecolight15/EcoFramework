@@ -239,7 +239,7 @@ public abstract class PluginFrame extends JavaPlugin {
         // コンフィグファイルに一時的に被依存プラグインのリストを書き出してunloadする
         ConfigFrame f = getDefaultConfig();
         if (f != null) {
-            List<String> str = f.getArrayList("suspend");
+            List<String> str = f.conf.getStringList("suspend");
             if (str == null) {
                 str = new ArrayList<>();
             }
